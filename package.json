@@ -1,0 +1,32 @@
+{
+  "name": "youth-soccer-app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reidwcoleman/youth-soccer-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/reidwcoleman/youth-soccer-app/issues"
+  },
+  "homepage": "https://github.com/reidwcoleman/youth-soccer-app#readme",
+  "description": "",
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "^7.2.4"
+  },
+  "devDependencies": {
+    "terser": "^5.44.1"
+  }
+}
