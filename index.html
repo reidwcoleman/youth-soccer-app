@@ -164,6 +164,19 @@
     .invite-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
     .invite-code { font-size: 32px; font-weight: 700; color: #16a34a; letter-spacing: 3px; margin-top: 8px; }
     .invite-hint { font-size: 13px; color: #6b7280; margin-top: 12px; }
+
+    /* Event Detail Modal */
+    .event-detail-header { text-align: center; margin-bottom: 20px; }
+    .event-detail-icon { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 12px; }
+    .event-detail-icon.game { background: #ffedd5; }
+    .event-detail-icon.practice { background: #dbeafe; }
+    .event-detail-title { font-size: 22px; font-weight: 700; }
+    .event-detail-date { color: #6b7280; margin-top: 4px; }
+    .event-detail-section { background: #f9fafb; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .event-detail-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .event-detail-value { font-size: 16px; font-weight: 500; color: #1f2937; }
+    .directions-btn { background: #4285f4; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .directions-btn:hover { background: #3367d6; }
   </style>
 </head>
 <body>
@@ -193,10 +206,10 @@
             { id: 'player-5', name: 'Ava Thompson', teamId: 'team-1', jersey: 11, position: 'Forward', goals: 4, assists: 2 }
           ],
           events: [
-            { id: 'e1', teamId: 'team-1', type: 'game', title: 'vs Thunder FC', date: '2025-12-06', time: '10:00 AM', location: 'North Fields Complex' },
-            { id: 'e2', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-03', time: '5:30 PM', location: 'Community Park' },
-            { id: 'e3', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-05', time: '5:30 PM', location: 'Community Park' },
-            { id: 'e4', teamId: 'team-1', type: 'game', title: 'vs Storm United', date: '2025-12-13', time: '2:00 PM', location: 'Riverside Complex' }
+            { id: 'e1', teamId: 'team-1', type: 'game', title: 'vs Thunder FC', date: '2025-12-06', time: '10:00 AM', location: 'North Fields Complex', address: '1200 North Harrison Ave, Cary, NC 27513' },
+            { id: 'e2', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-03', time: '5:30 PM', location: 'Community Park', address: '316 N Academy St, Cary, NC 27513' },
+            { id: 'e3', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-05', time: '5:30 PM', location: 'Community Park', address: '316 N Academy St, Cary, NC 27513' },
+            { id: 'e4', teamId: 'team-1', type: 'game', title: 'vs Storm United', date: '2025-12-13', time: '2:00 PM', location: 'Riverside Complex', address: '1500 Tryon Rd, Cary, NC 27511' }
           ],
           chats: [
             { id: 'chat-team', name: 'Team Chat', icon: '💬', teamId: 'team-1', type: 'team' },
@@ -407,7 +420,7 @@
 
       if (currentTab === 'home') {
         var eventsHtml = events.slice(0, 3).map(function(e) {
-          return '<div class="card event-card">' +
+          return '<div class="card event-card" onclick="showEventDetail(\'' + e.id + '\')">' +
             '<div class="event-icon ' + e.type + '">' + (e.type === 'game' ? '⚽' : '🏃') + '</div>' +
             '<div class="event-info">' +
               '<div class="event-title">' + e.title + '</div>' +
@@ -448,7 +461,7 @@
       } else if (currentTab === 'schedule') {
         var scheduleHtml = events.map(function(e) {
           var md = getMonthDay(e.date);
-          return '<div class="card schedule-card">' +
+          return '<div class="card schedule-card" onclick="showEventDetail(\'' + e.id + '\')">' +
             '<div class="schedule-date"><div class="schedule-month">' + md.month + '</div><div class="schedule-day">' + md.day + '</div></div>' +
             '<div class="schedule-info">' +
               '<span class="schedule-type ' + e.type + '">' + e.type + '</span>' +
@@ -508,7 +521,7 @@
 
       if (currentTab === 'home') {
         var eventsHtml = events.slice(0, 3).map(function(e) {
-          return '<div class="card event-card">' +
+          return '<div class="card event-card" onclick="showEventDetail(\'' + e.id + '\')">' +
             '<div class="event-icon ' + e.type + '">' + (e.type === 'game' ? '⚽' : '🏃') + '</div>' +
             '<div class="event-info">' +
               '<div class="event-title">' + e.title + '</div>' +
@@ -550,7 +563,7 @@
       } else if (currentTab === 'schedule') {
         var scheduleHtml = events.map(function(e) {
           var md = getMonthDay(e.date);
-          return '<div class="card schedule-card">' +
+          return '<div class="card schedule-card" onclick="showEventDetail(\'' + e.id + '\')">' +
             '<div class="schedule-date"><div class="schedule-month">' + md.month + '</div><div class="schedule-day">' + md.day + '</div></div>' +
             '<div class="schedule-info">' +
               '<span class="schedule-type ' + e.type + '">' + e.type + '</span>' +
@@ -816,7 +829,8 @@
         '<div class="input-group"><label>Title</label><input id="new-event-title" class="input" placeholder="vs Thunder FC"></div>' +
         '<div class="input-group"><label>Date</label><input id="new-event-date" class="input" type="date"></div>' +
         '<div class="input-group"><label>Time</label><input id="new-event-time" class="input" type="time"></div>' +
-        '<div class="input-group"><label>Location</label><input id="new-event-loc" class="input" placeholder="North Fields"></div>' +
+        '<div class="input-group"><label>Location Name</label><input id="new-event-loc" class="input" placeholder="North Fields Complex"></div>' +
+        '<div class="input-group"><label>Address (for directions)</label><input id="new-event-address" class="input" placeholder="123 Main St, City, State 12345"></div>' +
         '<button class="btn btn-primary" onclick="addEvent()">Create Event</button>' +
       '</div>';
       document.body.appendChild(modal);
@@ -828,6 +842,7 @@
       var date = document.getElementById('new-event-date').value;
       var time = document.getElementById('new-event-time').value;
       var loc = document.getElementById('new-event-loc').value;
+      var address = document.getElementById('new-event-address').value;
       if (!date || !time || !loc) return;
       var data = Storage.getData();
       data.events.push({
@@ -837,7 +852,8 @@
         title: title,
         date: date,
         time: time,
-        location: loc
+        location: loc,
+        address: address || ''
       });
       Storage.saveData(data);
       closeModal();
@@ -865,6 +881,56 @@
     function closeModal() {
       var modal = document.getElementById('modal');
       if (modal) modal.remove();
+    }
+
+    function showEventDetail(eventId) {
+      var data = Storage.getData();
+      var event = data.events.find(function(e) { return e.id === eventId; });
+      if (!event) return;
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.id = 'modal';
+      modal.innerHTML = '<div class="modal-content">' +
+        '<div class="modal-header"><h3>Event Details</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+        '<div class="event-detail-header">' +
+          '<div class="event-detail-icon ' + event.type + '">' + (event.type === 'game' ? '⚽' : '🏃') + '</div>' +
+          '<div class="event-detail-title">' + event.title + '</div>' +
+          '<div class="event-detail-date">' + formatDate(event.date) + '</div>' +
+        '</div>' +
+        '<div class="event-detail-section">' +
+          '<div class="event-detail-label">Time</div>' +
+          '<div class="event-detail-value">🕐 ' + event.time + '</div>' +
+        '</div>' +
+        '<div class="event-detail-section">' +
+          '<div class="event-detail-label">Location</div>' +
+          '<div class="event-detail-value">📍 ' + event.location + '</div>' +
+          (event.address ? '<div style="font-size:13px;color:#6b7280;margin-top:4px">' + event.address + '</div>' : '') +
+        '</div>' +
+        '<button class="btn directions-btn" onclick="getDirections(\'' + eventId + '\')">' +
+          '<span>🗺️</span> Get Directions' +
+        '</button>' +
+        '<button class="btn btn-outline" onclick="closeModal()">Close</button>' +
+      '</div>';
+      document.body.appendChild(modal);
+    }
+
+    function getDirections(eventId) {
+      var data = Storage.getData();
+      var event = data.events.find(function(e) { return e.id === eventId; });
+      if (!event) return;
+
+      // Use the address if available, otherwise use the location name
+      var destination = event.address || event.location;
+
+      // Encode the destination for URL
+      var encodedDestination = encodeURIComponent(destination);
+
+      // Open Google Maps directions in a new tab
+      // This will use the user's current location as the starting point
+      var mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodedDestination;
+
+      window.open(mapsUrl, '_blank');
     }
 
     // ===== INIT =====
