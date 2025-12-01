@@ -353,6 +353,11 @@ const CoachDashboard = ({ user, db, setDb, onLogout }) => {
   const [showLocationConfirm, setShowLocationConfirm] = useState(false);
   const [locationError, setLocationError] = useState('');
 
+  // Recurring event states
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [repeatDay, setRepeatDay] = useState('');
+  const [repeatEndDate, setRepeatEndDate] = useState('');
+
   const team = db.teams.find(t => t.id === user.teamId);
   const roster = db.players.filter(p => p.teamId === user.teamId).map(p => ({ ...p, parent: db.parents.find(x => x.id === p.parentId)?.name || 'Unknown', email: db.parents.find(x => x.id === p.parentId)?.email || '' }));
   const events = db.events.filter(e => e.teamId === user.teamId).sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -391,7 +396,32 @@ const CoachDashboard = ({ user, db, setDb, onLogout }) => {
     setLocationInput('');
   };
 
-  // Modified addEvent to require validated location
+
+  // Helper function to generate recurring event dates
+  const getRecurringDates = (startDate, dayOfWeek, endDate) => {
+    const dates = [];
+    const start = new Date(startDate + 'T12:00:00');
+    const end = new Date(endDate + 'T12:00:00');
+    const targetDay = parseInt(dayOfWeek);
+
+    // Start from the start date
+    let current = new Date(start);
+
+    // If start date isn't the target day, find the first occurrence
+    while (current.getDay() !== targetDay) {
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Generate all dates until end date
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 7); // Move to next week
+    }
+
+    return dates;
+  };
+
+  // Modified addEvent to require validated location and support recurring events
   const addEvent = () => {
     if (!newEvent.date || !newEvent.time) {
       setLocationError('Please fill in all required fields');
@@ -401,35 +431,67 @@ const CoachDashboard = ({ user, db, setDb, onLogout }) => {
       setLocationError('Please select a valid location from Google Maps');
       return;
     }
-    const e = {
-      id: uuid(),
-      teamId: user.teamId,
-      type: newEvent.type,
-      title: newEvent.type === 'game' ? (newEvent.title || 'Game') : 'Practice',
-      date: newEvent.date,
-      time: newEvent.time,
-      location: selectedLocation.name,
-      locationAddress: selectedLocation.address,
-      locationPlaceId: selectedLocation.placeId,
-      locationLat: selectedLocation.lat,
-      locationLng: selectedLocation.lng,
-      field: '',
-      arriveBy: newEvent.time,
-      needsSnacks: newEvent.type === 'game'
-    };
-    const newDuties = newEvent.type === 'game' ? [{ id: uuid(), eventId: e.id, type: 'snacks', assignedTo: null, assignedId: null }, { id: uuid(), eventId: e.id, type: 'drinks', assignedTo: null, assignedId: null }] : [];
-    setDb({ ...db, events: [...db.events, e], duties: [...db.duties, ...newDuties] });
+    if (isRecurring && (!repeatDay || !repeatEndDate)) {
+      setLocationError('Please select repeat day and end date for recurring events');
+      return;
+    }
+
+    // Generate list of dates (single or recurring)
+    let eventDates = [newEvent.date];
+    if (isRecurring && repeatDay && repeatEndDate) {
+      eventDates = getRecurringDates(newEvent.date, repeatDay, repeatEndDate);
+      if (eventDates.length === 0) {
+        setLocationError('No events could be created with the selected days. Check your dates.');
+        return;
+      }
+    }
+
+    // Create events for all dates
+    const newEvents = [];
+    const newDuties = [];
+
+    eventDates.forEach(date => {
+      const e = {
+        id: uuid(),
+        teamId: user.teamId,
+        type: newEvent.type,
+        title: newEvent.type === 'game' ? (newEvent.title || 'Game') : 'Practice',
+        date: date,
+        time: newEvent.time,
+        location: selectedLocation.name,
+        locationAddress: selectedLocation.address,
+        locationPlaceId: selectedLocation.placeId,
+        locationLat: selectedLocation.lat,
+        locationLng: selectedLocation.lng,
+        field: '',
+        arriveBy: newEvent.time,
+        needsSnacks: newEvent.type === 'game',
+        isRecurring: isRecurring,
+        recurringDay: isRecurring ? repeatDay : null
+      };
+      newEvents.push(e);
+
+      if (newEvent.type === 'game') {
+        newDuties.push({ id: uuid(), eventId: e.id, type: 'snacks', assignedTo: null, assignedId: null });
+        newDuties.push({ id: uuid(), eventId: e.id, type: 'drinks', assignedTo: null, assignedId: null });
+      }
+    });
+
+    setDb({ ...db, events: [...db.events, ...newEvents], duties: [...db.duties, ...newDuties] });
     setNewEvent({ type: 'practice', title: '', date: '', time: '', location: '' });
     setLocationInput('');
     setSelectedLocation(null);
     setLocationError('');
+    setIsRecurring(false);
+    setRepeatDay('');
+    setRepeatEndDate('');
     setShowAddEvent(false);
-    setToast({ type: 'game', title: 'Event Created', message: `${e.title} on ${formatDate(e.date)}` });
-  };
 
-  const sendPush = () => { if (!pushTitle || !pushMessage) return; setDb({ ...db, notifications: [...db.notifications, { id: uuid(), teamId: user.teamId, type: pushType, title: pushTitle, message: pushMessage, read: false, createdAt: new Date().toISOString() }] }); setPushTitle(''); setPushMessage(''); setShowSendPush(false); setToast({ type: pushType, title: 'Notification Sent', message: `Sent to ${roster.length} players` }); };
-  const markRead = (id) => setDb({ ...db, notifications: db.notifications.map(n => n.id === id ? { ...n, read: true } : n) });
-  const markAllRead = () => setDb({ ...db, notifications: db.notifications.map(n => n.teamId === user.teamId ? { ...n, read: true } : n) });
+    const message = newEvents.length > 1
+      ? `${newEvents.length} ${newEvent.type}s created`
+      : `${newEvents[0].title} on ${formatDate(newEvents[0].date)}`;
+    setToast({ type: 'game', title: 'Event Created', message });
+  };
   const sendMessage = (chatId, text) => setDb({ ...db, messages: [...db.messages, { id: uuid(), chatId, senderId: user.id, senderName: user.name, text, isCoach: true, createdAt: new Date().toISOString() }] });
 
   if (showNotifications) return <NotificationsScreen notifications={notifications} onMarkRead={markRead} onMarkAllRead={markAllRead} onBack={() => setShowNotifications(false)} />;
@@ -445,7 +507,7 @@ const CoachDashboard = ({ user, db, setDb, onLogout }) => {
         {tab === 'chat' && (<><h2 style={styles.pageTitle}>Group Chats</h2><div style={styles.chatList}>{chats.map(c => (<div key={c.id} style={styles.chatListItem} onClick={() => setShowChat(c)}><div style={styles.chatListIcon}>{c.icon}</div><div style={styles.chatListInfo}><div style={styles.chatListName}>{c.name}</div><div style={styles.chatListPreview}>{c.lastMessage?.substring(0, 30) || 'No messages yet'}</div></div>{c.messageCount > 0 && <div style={styles.chatListBadge}>{c.messageCount}</div>}</div>))}</div></>)}
       </div>
       {showAddPlayer && (<div style={styles.modal}><div style={styles.modalContent}><div style={styles.modalHeader}><h3 style={styles.modalTitle}>Add Player</h3><button style={styles.modalClose} onClick={() => setShowAddPlayer(false)}>✕</button></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Player Name</label><input type="text" style={styles.input} placeholder="Emma Wilson" value={newPlayer.name} onChange={(e) => setNewPlayer({...newPlayer, name: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Parent Name</label><input type="text" style={styles.input} placeholder="Sarah Wilson" value={newPlayer.parent} onChange={(e) => setNewPlayer({...newPlayer, parent: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Email</label><input type="email" style={styles.input} placeholder="sarah@email.com" value={newPlayer.email} onChange={(e) => setNewPlayer({...newPlayer, email: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Jersey #</label><input type="number" style={styles.input} placeholder="7" value={newPlayer.jersey} onChange={(e) => setNewPlayer({...newPlayer, jersey: e.target.value})} /></div><button style={styles.btnPrimaryLarge} onClick={addPlayer}>Add Player</button></div></div>)}
-      {showAddEvent && (<div style={styles.modal}><div style={styles.modalContent}><div style={styles.modalHeader}><h3 style={styles.modalTitle}>Add Event</h3><button style={styles.modalClose} onClick={() => { setShowAddEvent(false); setLocationInput(''); setSelectedLocation(null); setLocationError(''); }}>✕</button></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Event Type</label><div style={styles.roleToggle}><button style={{...styles.roleBtn, ...(newEvent.type === 'practice' && styles.roleBtnActive)}} onClick={() => setNewEvent({...newEvent, type: 'practice'})}>🏃 Practice</button><button style={{...styles.roleBtn, ...(newEvent.type === 'game' && styles.roleBtnActive)}} onClick={() => setNewEvent({...newEvent, type: 'game'})}>⚽ Game</button></div></div>{newEvent.type === 'game' && <div style={styles.inputGroup}><label style={styles.inputLabel}>Opponent</label><input type="text" style={styles.input} placeholder="vs Thunder FC" value={newEvent.title} onChange={(e) => setNewEvent({...newEvent, title: e.target.value})} /></div>}<div style={styles.inputGroup}><label style={styles.inputLabel}>Date</label><input type="date" style={styles.input} value={newEvent.date} onChange={(e) => setNewEvent({...newEvent, date: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Time</label><input type="time" style={styles.input} value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Location</label><LocationSearchInput value={locationInput} onChange={setLocationInput} onPlaceSelected={handlePlaceSelected} placeholder="Search for a location on Google Maps..." inputStyle={styles.input} />{selectedLocation && (<div style={styles.selectedLocationBox}><span style={styles.selectedLocationIcon}>✓</span><div style={styles.selectedLocationText}><div style={styles.selectedLocationName}>{selectedLocation.name}</div><div style={styles.selectedLocationAddress}>{selectedLocation.address}</div></div><button style={styles.selectedLocationEdit} onClick={() => { setSelectedLocation(null); setLocationInput(''); }}>Change</button></div>)}{locationError && <div style={styles.locationErrorText}>{locationError}</div>}<span style={styles.inputHint}>Start typing to search for real locations on Google Maps</span></div><button style={styles.btnPrimaryLarge} onClick={addEvent}>Create Event</button></div></div>)}
+      {showAddEvent && (<div style={styles.modal}><div style={styles.modalContent}><div style={styles.modalHeader}><h3 style={styles.modalTitle}>Add Event</h3><button style={styles.modalClose} onClick={() => { setShowAddEvent(false); setLocationInput(''); setSelectedLocation(null); setLocationError(''); setIsRecurring(false); setRepeatDay(''); setRepeatEndDate(''); }}>✕</button></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Event Type</label><div style={styles.roleToggle}><button style={{...styles.roleBtn, ...(newEvent.type === 'practice' && styles.roleBtnActive)}} onClick={() => setNewEvent({...newEvent, type: 'practice'})}>🏃 Practice</button><button style={{...styles.roleBtn, ...(newEvent.type === 'game' && styles.roleBtnActive)}} onClick={() => setNewEvent({...newEvent, type: 'game'})}>⚽ Game</button></div></div>{newEvent.type === 'game' && <div style={styles.inputGroup}><label style={styles.inputLabel}>Opponent</label><input type="text" style={styles.input} placeholder="vs Thunder FC" value={newEvent.title} onChange={(e) => setNewEvent({...newEvent, title: e.target.value})} /></div>}<div style={styles.inputGroup}><label style={styles.inputLabel}>{isRecurring ? 'Start Date' : 'Date'}</label><input type="date" style={styles.input} value={newEvent.date} onChange={(e) => setNewEvent({...newEvent, date: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Time</label><input type="time" style={styles.input} value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Location</label><LocationSearchInput value={locationInput} onChange={setLocationInput} onPlaceSelected={handlePlaceSelected} placeholder="Search for a location on Google Maps..." inputStyle={styles.input} />{selectedLocation && (<div style={styles.selectedLocationBox}><span style={styles.selectedLocationIcon}>✓</span><div style={styles.selectedLocationText}><div style={styles.selectedLocationName}>{selectedLocation.name}</div><div style={styles.selectedLocationAddress}>{selectedLocation.address}</div></div><button style={styles.selectedLocationEdit} onClick={() => { setSelectedLocation(null); setLocationInput(''); }}>Change</button></div>)}{locationError && <div style={styles.locationErrorText}>{locationError}</div>}<span style={styles.inputHint}>Start typing to search for real locations on Google Maps</span></div><div style={styles.inputGroup}><div style={styles.checkboxGroup}><label style={styles.checkboxLabel}><input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} style={styles.checkbox} /><span>🔁 Repeat weekly</span></label></div></div>{isRecurring && (<><div style={styles.inputGroup}><label style={styles.inputLabel}>Repeat every</label><select style={styles.input} value={repeatDay} onChange={(e) => setRepeatDay(e.target.value)}><option value="">Select a day...</option><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Until</label><input type="date" style={styles.input} value={repeatEndDate} onChange={(e) => setRepeatEndDate(e.target.value)} /><span style={styles.inputHint}>Events will be created every {repeatDay ? ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][repeatDay] : 'selected day'} until this date</span></div></>)}<button style={styles.btnPrimaryLarge} onClick={addEvent}>{isRecurring ? 'Create Recurring Events' : 'Create Event'}</button></div></div>)}
       {showLocationConfirm && selectedLocation && (<LocationConfirmModal location={selectedLocation} onConfirm={confirmLocation} onCancel={cancelLocationConfirm} onEdit={editLocation} />)}
       {showSendPush && (<div style={styles.modal}><div style={styles.modalContent}><div style={styles.modalHeader}><h3 style={styles.modalTitle}>Send Notification</h3><button style={styles.modalClose} onClick={() => setShowSendPush(false)}>✕</button></div><div style={styles.pushPreview}><div style={styles.pushPreviewHeader}><span style={styles.pushPreviewIcon}>⚽</span><span style={styles.pushPreviewApp}>TeamKick</span><span style={styles.pushPreviewTime}>now</span></div><div style={styles.pushPreviewTitle}>{pushTitle || 'Notification Title'}</div><div style={styles.pushPreviewMessage}>{pushMessage || 'Your message here...'}</div></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Type</label><select style={styles.input} value={pushType} onChange={(e) => setPushType(e.target.value)}><option value="announcement">📢 Announcement</option><option value="reminder">⏰ Reminder</option><option value="game">⚽ Game Update</option></select></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Title</label><input type="text" style={styles.input} placeholder="Important Update" value={pushTitle} onChange={(e) => setPushTitle(e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Message</label><textarea style={{...styles.input, minHeight: 80}} placeholder="Enter your message..." value={pushMessage} onChange={(e) => setPushMessage(e.target.value)} /></div><button style={styles.btnPrimaryLarge} onClick={sendPush}>🔔 Send Notification</button></div></div>)}
       {showInvite && (<div style={styles.modal}><div style={styles.modalContent}><div style={styles.modalHeader}><h3 style={styles.modalTitle}>Invite Parents</h3><button style={styles.modalClose} onClick={() => setShowInvite(false)}>✕</button></div><div style={styles.teamCodeBox}><div style={styles.teamCodeLabel}>Team Code</div><div style={styles.teamCodeValue}>{team?.code}</div><div style={styles.teamCodeHint}>Share this code with parents to join</div></div><button style={styles.btnPrimaryLarge} onClick={() => setShowInvite(false)}>Done</button></div></div>)}
