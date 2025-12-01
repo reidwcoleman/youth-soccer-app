@@ -234,9 +234,9 @@
         var defaultData = {
           users: [
             { id: 'coach-1', email: 'coach@teamkick.com', password: 'password123', name: 'Coach Mike', isCoach: true, teamId: 'team-1' },
-            { id: 'parent-1', email: 'sarah@email.com', password: 'password123', name: 'Sarah Wilson', isCoach: false, teamId: 'team-1', playerId: 'player-1' },
-            { id: 'parent-2', email: 'david@email.com', password: 'password123', name: 'David Chen', isCoach: false, teamId: 'team-1', playerId: 'player-2' },
-            { id: 'parent-3', email: 'maria@email.com', password: 'password123', name: 'Maria Martinez', isCoach: false, teamId: 'team-1', playerId: 'player-3' }
+            { id: 'parent-1', email: 'sarah@email.com', password: 'password123', name: 'Sarah Wilson', isCoach: false, teamId: 'team-1', playerId: 'player-1', address: '123 Oak Street, Cary, NC 27513' },
+            { id: 'parent-2', email: 'david@email.com', password: 'password123', name: 'David Chen', isCoach: false, teamId: 'team-1', playerId: 'player-2', address: '456 Maple Avenue, Cary, NC 27513' },
+            { id: 'parent-3', email: 'maria@email.com', password: 'password123', name: 'Maria Martinez', isCoach: false, teamId: 'team-1', playerId: 'player-3', address: '789 Pine Lane, Cary, NC 27513' }
           ],
           teams: [
             { id: 'team-1', name: 'Cary Lightning', code: 'LIGHT-2025', ageGroup: 'U10', season: 'Fall 2025', record: '4-1-2' }
@@ -445,7 +445,8 @@
           '<div class="input-group"><label>Age Group</label><select id="create-age" class="input"><option value="">Select</option><option>U6</option><option>U8</option><option>U10</option><option>U12</option><option>U14</option></select></div>'
           :
           '<div class="input-group"><label>Team Code</label><input id="create-code" class="input" placeholder="LIGHT-2025" style="text-transform:uppercase;letter-spacing:2px;font-weight:600"><span style="font-size:12px;color:#9ca3af">Ask your coach for this</span></div>' +
-          '<div class="input-group"><label>Child\'s Name</label><input id="create-child" class="input" placeholder="Emma Wilson"></div>';
+          '<div class="input-group"><label>Child\'s Name</label><input id="create-child" class="input" placeholder="Emma Wilson"></div>' +
+          '<div class="input-group"><label>Your Home Address</label><input id="create-address" class="input" placeholder="123 Main St, City, NC 27513"><span style="font-size:12px;color:#9ca3af">Used for carpool coordination only</span></div>';
 
         return '<div>' +
           '<button class="back-btn" onclick="backToStep1()">← Back</button>' +
@@ -752,8 +753,12 @@
             });
 
             var actionBtn = '';
+            var routeBtn = '';
             if (isDriver) {
               actionBtn = '<button class="btn btn-small btn-cancel" onclick="cancelRide(\'' + r.id + '\')">Cancel Ride</button>';
+              if (r.passengers.length > 0) {
+                routeBtn = '<button class="btn btn-small directions-btn-small" onclick="showRoutePlanner(\'' + r.id + '\')" style="flex:1">🗺️ Plan Route</button>';
+              }
             } else if (isPassenger) {
               actionBtn = '<button class="btn btn-small btn-leave" onclick="leaveRide(\'' + r.id + '\')">Leave Ride</button>';
             } else if (!isFull) {
@@ -786,7 +791,7 @@
                   }).join('') +
                 '</div>' +
               '</div>' : '') +
-              '<div class="ride-actions">' + actionBtn + '</div>' +
+              '<div class="ride-actions">' + routeBtn + actionBtn + '</div>' +
             '</div>';
           }).join('');
 
@@ -884,13 +889,14 @@
       } else {
         var code = document.getElementById('create-code').value;
         var childName = document.getElementById('create-child').value;
+        var address = document.getElementById('create-address').value;
         if (!code || !childName) { showError('Please fill all fields'); return; }
         var team = data.teams.find(function(t) { return t.code.toUpperCase() === code.toUpperCase(); });
         if (!team) { showError('Invalid team code'); return; }
         var userId = genId();
         var playerId = genId();
         data.players.push({ id: playerId, name: childName, teamId: team.id, jersey: Math.floor(Math.random() * 20) + 1, position: 'TBD', goals: 0, assists: 0 });
-        var user = { id: userId, email: createFormData.email, password: createFormData.password, name: createFormData.name, isCoach: false, teamId: team.id, playerId: playerId };
+        var user = { id: userId, email: createFormData.email, password: createFormData.password, name: createFormData.name, isCoach: false, teamId: team.id, playerId: playerId, address: address || '' };
         data.users.push(user);
         Storage.saveData(data);
         currentUser = user;
@@ -1350,6 +1356,104 @@
       data.rideOffers = data.rideOffers.filter(function(r) { return r.id !== rideId; });
       Storage.saveData(data);
       render();
+    }
+
+    function showRoutePlanner(rideId) {
+      var data = Storage.getData();
+      var ride = data.rideOffers.find(function(r) { return r.id === rideId; });
+      if (!ride) return;
+
+      var event = data.events.find(function(e) { return e.id === ride.eventId; });
+      if (!event) return;
+
+      var driver = data.users.find(function(u) { return u.id === ride.driverId; });
+      var driverAddress = driver && driver.address ? driver.address : 'Address not set';
+
+      // Get passenger addresses
+      var passengerStops = ride.passengers.map(function(pid) {
+        var passenger = data.users.find(function(u) { return u.id === pid; });
+        return {
+          name: passenger ? passenger.name : 'Unknown',
+          address: passenger && passenger.address ? passenger.address : 'Address not set'
+        };
+      });
+
+      var eventAddress = event.address || event.location;
+
+      // Build the stops list HTML
+      var stopsHtml = '<div style="margin-bottom:16px">' +
+        '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:#f0fdf4;border-radius:10px;margin-bottom:8px">' +
+          '<div style="width:28px;height:28px;background:#16a34a;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0">1</div>' +
+          '<div style="flex:1">' +
+            '<div style="font-weight:600;font-size:14px;color:#166534">Your Home (Start)</div>' +
+            '<div style="font-size:13px;color:#374151;margin-top:2px">' + driverAddress + '</div>' +
+          '</div>' +
+        '</div>';
+
+      passengerStops.forEach(function(stop, index) {
+        stopsHtml += '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:#dbeafe;border-radius:10px;margin-bottom:8px">' +
+          '<div style="width:28px;height:28px;background:#1d4ed8;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0">' + (index + 2) + '</div>' +
+          '<div style="flex:1">' +
+            '<div style="font-weight:600;font-size:14px;color:#1e40af">Pickup: ' + stop.name + '</div>' +
+            '<div style="font-size:13px;color:#374151;margin-top:2px">' + stop.address + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+
+      stopsHtml += '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:#ffedd5;border-radius:10px">' +
+        '<div style="width:28px;height:28px;background:#c2410c;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0">⚽</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-weight:600;font-size:14px;color:#c2410c">' + event.title + ' (' + event.location + ')</div>' +
+          '<div style="font-size:13px;color:#374151;margin-top:2px">' + eventAddress + '</div>' +
+          '<div style="font-size:12px;color:#6b7280;margin-top:4px">' + formatDate(event.date) + ' at ' + event.time + '</div>' +
+        '</div>' +
+      '</div></div>';
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.id = 'modal';
+      modal.innerHTML = '<div class="modal-content">' +
+        '<div class="modal-header"><h3>Plan Your Route</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+        '<p style="font-size:13px;color:#6b7280;margin-bottom:16px">Here\'s your route with all pickup stops. Open in Google Maps to see driving times and the best departure time to arrive on schedule.</p>' +
+        '<h4 style="font-size:14px;font-weight:600;margin-bottom:12px">Route Stops:</h4>' +
+        stopsHtml +
+        '<button class="btn directions-btn" onclick="openMultiStopRoute(\'' + rideId + '\')">' +
+          '<span>🗺️</span> Open in Google Maps' +
+        '</button>' +
+        '<p style="font-size:12px;color:#9ca3af;text-align:center;margin-top:8px">Google Maps will show drive times and help you plan when to leave</p>' +
+        '<button class="btn btn-outline" onclick="closeModal()" style="margin-top:8px">Close</button>' +
+      '</div>';
+      document.body.appendChild(modal);
+    }
+
+    function openMultiStopRoute(rideId) {
+      var data = Storage.getData();
+      var ride = data.rideOffers.find(function(r) { return r.id === rideId; });
+      if (!ride) return;
+
+      var event = data.events.find(function(e) { return e.id === ride.eventId; });
+      if (!event) return;
+
+      var driver = data.users.find(function(u) { return u.id === ride.driverId; });
+      var driverAddress = driver && driver.address ? driver.address : '';
+
+      // Get passenger addresses as waypoints
+      var waypoints = ride.passengers.map(function(pid) {
+        var passenger = data.users.find(function(u) { return u.id === pid; });
+        return passenger && passenger.address ? passenger.address : '';
+      }).filter(function(addr) { return addr !== ''; });
+
+      var eventAddress = event.address || event.location;
+
+      // Build Google Maps URL with multiple stops
+      // Format: origin -> waypoints -> destination
+      var origin = encodeURIComponent(driverAddress);
+      var destination = encodeURIComponent(eventAddress);
+      var waypointsParam = waypoints.length > 0 ? '&waypoints=' + waypoints.map(function(wp) { return encodeURIComponent(wp); }).join('|') : '';
+
+      var mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + destination + waypointsParam + '&travelmode=driving';
+
+      window.open(mapsUrl, '_blank');
     }
 
     // ===== INIT =====
