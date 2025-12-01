@@ -180,6 +180,46 @@
     .event-detail-value { font-size: 16px; font-weight: 500; color: #1f2937; }
     .directions-btn { background: #4285f4; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; }
     .directions-btn:hover { background: #3367d6; }
+
+    /* Carpool Styles */
+    .carpool-group { background: white; border-radius: 14px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .carpool-group-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .carpool-group-icon { width: 48px; height: 48px; background: #fef3c7; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+    .carpool-group-info { flex: 1; }
+    .carpool-group-name { font-weight: 600; font-size: 16px; }
+    .carpool-group-members { font-size: 13px; color: #6b7280; }
+    .carpool-members-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .carpool-member-chip { background: #f3f4f6; padding: 4px 10px; border-radius: 20px; font-size: 12px; color: #374151; }
+    .carpool-member-chip.you { background: #dcfce7; color: #166534; }
+    .ride-card { background: white; border-radius: 14px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #16a34a; }
+    .ride-card.full { border-left-color: #9ca3af; opacity: 0.7; }
+    .ride-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .ride-event { font-weight: 600; font-size: 15px; }
+    .ride-date { font-size: 13px; color: #6b7280; }
+    .ride-driver { display: flex; align-items: center; gap: 8px; margin: 12px 0; padding: 10px; background: #f9fafb; border-radius: 10px; }
+    .ride-driver-avatar { width: 36px; height: 36px; background: #dbeafe; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .ride-driver-info { flex: 1; }
+    .ride-driver-name { font-weight: 500; font-size: 14px; }
+    .ride-driver-label { font-size: 11px; color: #6b7280; }
+    .ride-seats { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .ride-seats-icon { font-size: 18px; }
+    .ride-seats-text { font-size: 13px; color: #374151; }
+    .ride-seats-text span { font-weight: 600; color: #16a34a; }
+    .ride-passengers { margin-bottom: 12px; }
+    .ride-passengers-label { font-size: 12px; color: #9ca3af; margin-bottom: 6px; }
+    .ride-passengers-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ride-passenger { background: #e0f2fe; padding: 4px 10px; border-radius: 20px; font-size: 12px; color: #0369a1; }
+    .ride-passenger.you { background: #dcfce7; color: #166534; font-weight: 600; }
+    .ride-actions { display: flex; gap: 8px; }
+    .btn-join { background: #16a34a; color: white; flex: 1; }
+    .btn-leave { background: #fef2f2; color: #dc2626; flex: 1; }
+    .btn-cancel { background: #fee2e2; color: #dc2626; }
+    .empty-state { text-align: center; padding: 40px 20px; color: #9ca3af; }
+    .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state-text { font-size: 14px; }
+    .tab-buttons { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab-btn { flex: 1; padding: 10px; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; background: #f3f4f6; color: #6b7280; }
+    .tab-btn.active { background: #16a34a; color: white; }
   </style>
 </head>
 <body>
@@ -227,6 +267,13 @@
             { id: 'm4', chatId: 'chat-carpool', oderId: 'parent-3', senderName: 'Maria Martinez', text: 'Anyone need a ride Saturday?', time: Date.now() - 1800000 },
             { id: 'm5', chatId: 'chat-parents', oderId: 'parent-1', senderName: 'Sarah Wilson', text: 'Should we do a group gift for Coach Mike? 🎁', time: Date.now() - 7200000 },
             { id: 'm6', chatId: 'chat-parents', oderId: 'parent-2', senderName: 'David Chen', text: 'Great idea! Count us in!', time: Date.now() - 6800000 }
+          ],
+          carpoolGroups: [
+            { id: 'cg-1', teamId: 'team-1', name: 'Neighborhood Crew', creatorId: 'parent-1', memberIds: ['parent-1', 'parent-2', 'parent-3'] }
+          ],
+          rideOffers: [
+            { id: 'ride-1', groupId: 'cg-1', eventId: 'e1', driverId: 'parent-1', driverName: 'Sarah Wilson', seats: 3, passengers: ['parent-2'] },
+            { id: 'ride-2', groupId: 'cg-1', eventId: 'e2', driverId: 'parent-3', driverName: 'Maria Martinez', seats: 2, passengers: [] }
           ]
         };
         localStorage.setItem('teamkick_data', JSON.stringify(defaultData));
@@ -290,6 +337,7 @@
     var currentChat = null;
     var createAccountStep = 1;
     var createAccountIsCoach = false;
+    var carpoolSubTab = 'rides'; // 'rides' or 'groups'
 
     // ===== RENDER FUNCTIONS =====
     function render() {
@@ -478,17 +526,8 @@
           '</div>';
         }).join('');
         content = '<h2 style="margin-bottom:16px">Schedule</h2>' + scheduleHtml;
-      } else if (currentTab === 'chat') {
-        var chatsHtml = chats.map(function(c) {
-          return '<div class="chat-item" onclick="openChat(\'' + c.id + '\')">' +
-            '<div class="chat-icon">' + c.icon + '</div>' +
-            '<div class="chat-info">' +
-              '<div class="chat-name">' + c.name + '</div>' +
-              '<div class="chat-preview">Tap to open</div>' +
-            '</div>' +
-          '</div>';
-        }).join('');
-        content = '<h2 style="margin-bottom:16px">Group Chats</h2>' + chatsHtml;
+      } else if (currentTab === 'carpool') {
+        content = renderCarpoolTab(data);
       } else if (currentTab === 'team') {
         var rosterHtml = players.map(function(p) {
           var isMine = currentUser.playerId === p.id;
@@ -512,7 +551,7 @@
       '<div class="nav">' +
         '<button class="nav-item ' + (currentTab === 'home' ? 'active' : '') + '" onclick="switchTab(\'home\')"><span>🏠</span><span>Home</span></button>' +
         '<button class="nav-item ' + (currentTab === 'schedule' ? 'active' : '') + '" onclick="switchTab(\'schedule\')"><span>📅</span><span>Schedule</span></button>' +
-        '<button class="nav-item ' + (currentTab === 'chat' ? 'active' : '') + '" onclick="switchTab(\'chat\')"><span>💬</span><span>Chats</span></button>' +
+        '<button class="nav-item ' + (currentTab === 'carpool' ? 'active' : '') + '" onclick="switchTab(\'carpool\')"><span>🚗</span><span>Carpool</span></button>' +
         '<button class="nav-item ' + (currentTab === 'team' ? 'active' : '') + '" onclick="switchTab(\'team\')"><span>👥</span><span>Team</span></button>' +
       '</div>';
     }
@@ -641,6 +680,117 @@
           '<button onclick="sendMessage()">Send</button>' +
         '</div>' +
       '</div>';
+    }
+
+    // ===== CARPOOL TAB =====
+    function renderCarpoolTab(data) {
+      var myGroups = (data.carpoolGroups || []).filter(function(g) {
+        return g.teamId === currentUser.teamId && g.memberIds.indexOf(currentUser.id) !== -1;
+      });
+      var allGroupIds = myGroups.map(function(g) { return g.id; });
+      var myRides = (data.rideOffers || []).filter(function(r) {
+        return allGroupIds.indexOf(r.groupId) !== -1;
+      });
+      var events = data.events.filter(function(e) { return e.teamId === currentUser.teamId; });
+      var users = data.users;
+
+      var tabButtons = '<div class="tab-buttons">' +
+        '<button class="tab-btn ' + (carpoolSubTab === 'rides' ? 'active' : '') + '" onclick="switchCarpoolTab(\'rides\')">🚗 Rides</button>' +
+        '<button class="tab-btn ' + (carpoolSubTab === 'groups' ? 'active' : '') + '" onclick="switchCarpoolTab(\'groups\')">👥 My Groups</button>' +
+      '</div>';
+
+      if (carpoolSubTab === 'groups') {
+        var groupsHtml = myGroups.length === 0 ?
+          '<div class="empty-state"><div class="empty-state-icon">👥</div><div class="empty-state-text">No carpool groups yet.<br>Create one to start coordinating rides!</div></div>' :
+          myGroups.map(function(g) {
+            var memberNames = g.memberIds.map(function(mid) {
+              var u = users.find(function(usr) { return usr.id === mid; });
+              return u ? (mid === currentUser.id ? 'You' : u.name.split(' ')[0]) : 'Unknown';
+            });
+            return '<div class="carpool-group">' +
+              '<div class="carpool-group-header">' +
+                '<div class="carpool-group-icon">🚗</div>' +
+                '<div class="carpool-group-info">' +
+                  '<div class="carpool-group-name">' + g.name + '</div>' +
+                  '<div class="carpool-group-members">' + g.memberIds.length + ' members</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="carpool-members-list">' +
+                memberNames.map(function(n) {
+                  return '<span class="carpool-member-chip' + (n === 'You' ? ' you' : '') + '">' + n + '</span>';
+                }).join('') +
+              '</div>' +
+              (g.creatorId === currentUser.id ? '<button class="btn btn-outline btn-small" style="margin-top:12px" onclick="showInviteToGroup(\'' + g.id + '\')">+ Invite Parent</button>' : '') +
+            '</div>';
+          }).join('');
+
+        return '<h2 style="margin-bottom:16px">Carpool</h2>' + tabButtons +
+          '<button class="btn btn-primary" onclick="showCreateGroup()">+ Create New Group</button>' +
+          '<h3 class="section-title">Your Groups</h3>' + groupsHtml;
+      } else {
+        // Rides tab
+        var ridesHtml = myRides.length === 0 ?
+          '<div class="empty-state"><div class="empty-state-icon">🚗</div><div class="empty-state-text">No rides available.<br>Join a carpool group or offer a ride!</div></div>' :
+          myRides.map(function(r) {
+            var event = events.find(function(ev) { return ev.id === r.eventId; });
+            if (!event) return '';
+            var seatsLeft = r.seats - r.passengers.length;
+            var isFull = seatsLeft <= 0;
+            var isDriver = r.driverId === currentUser.id;
+            var isPassenger = r.passengers.indexOf(currentUser.id) !== -1;
+            var passengerNames = r.passengers.map(function(pid) {
+              var u = users.find(function(usr) { return usr.id === pid; });
+              return u ? (pid === currentUser.id ? 'You' : u.name.split(' ')[0]) : 'Unknown';
+            });
+
+            var actionBtn = '';
+            if (isDriver) {
+              actionBtn = '<button class="btn btn-small btn-cancel" onclick="cancelRide(\'' + r.id + '\')">Cancel Ride</button>';
+            } else if (isPassenger) {
+              actionBtn = '<button class="btn btn-small btn-leave" onclick="leaveRide(\'' + r.id + '\')">Leave Ride</button>';
+            } else if (!isFull) {
+              actionBtn = '<button class="btn btn-small btn-join" onclick="joinRide(\'' + r.id + '\')">Join Ride</button>';
+            }
+
+            return '<div class="ride-card' + (isFull && !isPassenger && !isDriver ? ' full' : '') + '">' +
+              '<div class="ride-header">' +
+                '<div>' +
+                  '<div class="ride-event">' + (event.type === 'game' ? '⚽ ' : '🏃 ') + event.title + '</div>' +
+                  '<div class="ride-date">' + formatDate(event.date) + ' • ' + event.time + '</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="ride-driver">' +
+                '<div class="ride-driver-avatar">' + (isDriver ? '👤' : '🚘') + '</div>' +
+                '<div class="ride-driver-info">' +
+                  '<div class="ride-driver-name">' + (isDriver ? 'You\'re driving' : r.driverName) + '</div>' +
+                  '<div class="ride-driver-label">Driver</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="ride-seats">' +
+                '<span class="ride-seats-icon">💺</span>' +
+                '<span class="ride-seats-text"><span>' + seatsLeft + '</span> of ' + r.seats + ' seats available</span>' +
+              '</div>' +
+              (r.passengers.length > 0 ? '<div class="ride-passengers">' +
+                '<div class="ride-passengers-label">Passengers:</div>' +
+                '<div class="ride-passengers-list">' +
+                  passengerNames.map(function(n) {
+                    return '<span class="ride-passenger' + (n === 'You' ? ' you' : '') + '">' + n + '</span>';
+                  }).join('') +
+                '</div>' +
+              '</div>' : '') +
+              '<div class="ride-actions">' + actionBtn + '</div>' +
+            '</div>';
+          }).join('');
+
+        return '<h2 style="margin-bottom:16px">Carpool</h2>' + tabButtons +
+          '<button class="btn btn-primary" onclick="showOfferRide()">+ Offer a Ride</button>' +
+          '<h3 class="section-title">Available Rides</h3>' + ridesHtml;
+      }
+    }
+
+    function switchCarpoolTab(tab) {
+      carpoolSubTab = tab;
+      render();
     }
 
     // ===== EVENT HANDLERS =====
@@ -944,6 +1094,217 @@
       var mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodedDestination;
 
       window.open(mapsUrl, '_blank');
+    }
+
+    // ===== CARPOOL FUNCTIONS =====
+    function showCreateGroup() {
+      var data = Storage.getData();
+      var teamParents = data.users.filter(function(u) {
+        return u.teamId === currentUser.teamId && !u.isCoach && u.id !== currentUser.id;
+      });
+
+      var parentsCheckboxes = teamParents.map(function(p) {
+        return '<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
+          '<input type="checkbox" class="group-member-check" value="' + p.id + '" style="width:20px;height:20px">' +
+          '<span>' + p.name + '</span>' +
+        '</label>';
+      }).join('');
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.id = 'modal';
+      modal.innerHTML = '<div class="modal-content">' +
+        '<div class="modal-header"><h3>Create Carpool Group</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+        '<p style="font-size:13px;color:#6b7280;margin-bottom:16px">Create a group with parents you trust for carpooling. Only group members can see and join each other\'s rides.</p>' +
+        '<div class="input-group"><label>Group Name</label><input id="new-group-name" class="input" placeholder="e.g. Neighborhood Crew"></div>' +
+        '<div class="input-group"><label>Select Parents to Invite</label>' +
+          '<div style="max-height:200px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;padding:8px">' +
+            (parentsCheckboxes || '<p style="color:#9ca3af;text-align:center;padding:20px">No other parents on this team yet</p>') +
+          '</div>' +
+        '</div>' +
+        '<button class="btn btn-primary" onclick="createGroup()">Create Group</button>' +
+      '</div>';
+      document.body.appendChild(modal);
+    }
+
+    function createGroup() {
+      var name = document.getElementById('new-group-name').value;
+      if (!name) { alert('Please enter a group name'); return; }
+
+      var checkboxes = document.querySelectorAll('.group-member-check:checked');
+      var memberIds = [currentUser.id];
+      checkboxes.forEach(function(cb) {
+        memberIds.push(cb.value);
+      });
+
+      var data = Storage.getData();
+      if (!data.carpoolGroups) data.carpoolGroups = [];
+      data.carpoolGroups.push({
+        id: genId(),
+        teamId: currentUser.teamId,
+        name: name,
+        creatorId: currentUser.id,
+        memberIds: memberIds
+      });
+      Storage.saveData(data);
+      closeModal();
+      render();
+    }
+
+    function showInviteToGroup(groupId) {
+      var data = Storage.getData();
+      var group = data.carpoolGroups.find(function(g) { return g.id === groupId; });
+      if (!group) return;
+
+      var teamParents = data.users.filter(function(u) {
+        return u.teamId === currentUser.teamId && !u.isCoach && group.memberIds.indexOf(u.id) === -1;
+      });
+
+      var parentsCheckboxes = teamParents.map(function(p) {
+        return '<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
+          '<input type="checkbox" class="invite-member-check" value="' + p.id + '" style="width:20px;height:20px">' +
+          '<span>' + p.name + '</span>' +
+        '</label>';
+      }).join('');
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.id = 'modal';
+      modal.innerHTML = '<div class="modal-content">' +
+        '<div class="modal-header"><h3>Invite to ' + group.name + '</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+        '<div class="input-group"><label>Select Parents to Add</label>' +
+          '<div style="max-height:200px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;padding:8px">' +
+            (parentsCheckboxes || '<p style="color:#9ca3af;text-align:center;padding:20px">All team parents are already in this group</p>') +
+          '</div>' +
+        '</div>' +
+        '<button class="btn btn-primary" onclick="addToGroup(\'' + groupId + '\')">Add to Group</button>' +
+      '</div>';
+      document.body.appendChild(modal);
+    }
+
+    function addToGroup(groupId) {
+      var checkboxes = document.querySelectorAll('.invite-member-check:checked');
+      if (checkboxes.length === 0) { closeModal(); return; }
+
+      var data = Storage.getData();
+      var group = data.carpoolGroups.find(function(g) { return g.id === groupId; });
+      if (!group) return;
+
+      checkboxes.forEach(function(cb) {
+        if (group.memberIds.indexOf(cb.value) === -1) {
+          group.memberIds.push(cb.value);
+        }
+      });
+      Storage.saveData(data);
+      closeModal();
+      render();
+    }
+
+    function showOfferRide() {
+      var data = Storage.getData();
+      var myGroups = (data.carpoolGroups || []).filter(function(g) {
+        return g.teamId === currentUser.teamId && g.memberIds.indexOf(currentUser.id) !== -1;
+      });
+      var events = data.events.filter(function(e) { return e.teamId === currentUser.teamId; });
+
+      if (myGroups.length === 0) {
+        alert('You need to be in a carpool group first. Go to "My Groups" tab to create or join one.');
+        return;
+      }
+
+      var groupOptions = myGroups.map(function(g) {
+        return '<option value="' + g.id + '">' + g.name + '</option>';
+      }).join('');
+
+      var eventOptions = events.map(function(e) {
+        return '<option value="' + e.id + '">' + (e.type === 'game' ? '⚽ ' : '🏃 ') + e.title + ' - ' + formatDate(e.date) + '</option>';
+      }).join('');
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.id = 'modal';
+      modal.innerHTML = '<div class="modal-content">' +
+        '<div class="modal-header"><h3>Offer a Ride</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+        '<p style="font-size:13px;color:#6b7280;margin-bottom:16px">Offer to drive other parents\' kids to an event. Only members of the selected group can sign up.</p>' +
+        '<div class="input-group"><label>Carpool Group</label><select id="ride-group" class="input">' + groupOptions + '</select></div>' +
+        '<div class="input-group"><label>Event</label><select id="ride-event" class="input">' + eventOptions + '</select></div>' +
+        '<div class="input-group"><label>Available Seats (not including your child)</label><input id="ride-seats" class="input" type="number" min="1" max="6" value="2" placeholder="2"></div>' +
+        '<button class="btn btn-primary" onclick="offerRide()">Offer Ride</button>' +
+      '</div>';
+      document.body.appendChild(modal);
+    }
+
+    function offerRide() {
+      var groupId = document.getElementById('ride-group').value;
+      var eventId = document.getElementById('ride-event').value;
+      var seats = parseInt(document.getElementById('ride-seats').value) || 2;
+
+      if (!groupId || !eventId) return;
+
+      var data = Storage.getData();
+      if (!data.rideOffers) data.rideOffers = [];
+
+      // Check if user already offered a ride for this event
+      var existingRide = data.rideOffers.find(function(r) {
+        return r.eventId === eventId && r.driverId === currentUser.id;
+      });
+      if (existingRide) {
+        alert('You already offered a ride for this event');
+        closeModal();
+        return;
+      }
+
+      data.rideOffers.push({
+        id: genId(),
+        groupId: groupId,
+        eventId: eventId,
+        driverId: currentUser.id,
+        driverName: currentUser.name,
+        seats: seats,
+        passengers: []
+      });
+      Storage.saveData(data);
+      closeModal();
+      render();
+    }
+
+    function joinRide(rideId) {
+      var data = Storage.getData();
+      var ride = data.rideOffers.find(function(r) { return r.id === rideId; });
+      if (!ride) return;
+
+      if (ride.passengers.indexOf(currentUser.id) !== -1) {
+        alert('You\'re already on this ride');
+        return;
+      }
+
+      if (ride.passengers.length >= ride.seats) {
+        alert('This ride is full');
+        return;
+      }
+
+      ride.passengers.push(currentUser.id);
+      Storage.saveData(data);
+      render();
+    }
+
+    function leaveRide(rideId) {
+      var data = Storage.getData();
+      var ride = data.rideOffers.find(function(r) { return r.id === rideId; });
+      if (!ride) return;
+
+      ride.passengers = ride.passengers.filter(function(p) { return p !== currentUser.id; });
+      Storage.saveData(data);
+      render();
+    }
+
+    function cancelRide(rideId) {
+      if (!confirm('Cancel this ride? Passengers will be notified.')) return;
+
+      var data = Storage.getData();
+      data.rideOffers = data.rideOffers.filter(function(r) { return r.id !== rideId; });
+      Storage.saveData(data);
+      render();
     }
 
     // ===== INIT =====
