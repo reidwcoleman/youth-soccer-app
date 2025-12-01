@@ -68,15 +68,18 @@
     .player-stat-label { font-size: 10px; color: #9ca3af; }
 
     /* Event Card */
-    .event-card { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+    .event-card { display: flex; align-items: center; gap: 12px; cursor: pointer; flex-wrap: wrap; }
     .event-icon { width: 56px; height: 56px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; }
     .event-icon.game { background: #ffedd5; }
     .event-icon.practice { background: #dbeafe; }
-    .event-info { flex: 1; }
+    .event-info { flex: 1; min-width: 150px; }
     .event-title { font-weight: 600; font-size: 16px; }
     .event-time { font-size: 13px; color: #6b7280; margin-top: 2px; }
     .event-location { font-size: 12px; color: #9ca3af; margin-top: 4px; }
     .event-badge { font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px; background: #f3f4f6; }
+    .event-actions { width: 100%; display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+    .directions-btn-small { background: #4285f4; color: white; border: none; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; }
+    .directions-btn-small:hover { background: #3367d6; }
 
     /* Quick Actions */
     .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
@@ -420,7 +423,7 @@
 
       if (currentTab === 'home') {
         var eventsHtml = events.slice(0, 3).map(function(e) {
-          return '<div class="card event-card" onclick="showEventDetail(\'' + e.id + '\')">' +
+          return '<div class="card event-card">' +
             '<div class="event-icon ' + e.type + '">' + (e.type === 'game' ? '⚽' : '🏃') + '</div>' +
             '<div class="event-info">' +
               '<div class="event-title">' + e.title + '</div>' +
@@ -428,6 +431,9 @@
               '<div class="event-location">📍 ' + e.location + '</div>' +
             '</div>' +
             '<div class="event-badge">' + getDaysUntil(e.date) + '</div>' +
+            '<div class="event-actions">' +
+              '<button class="directions-btn-small" onclick="event.stopPropagation(); getDirections(\'' + e.id + '\')">🗺️ Get Directions</button>' +
+            '</div>' +
           '</div>';
         }).join('');
 
@@ -461,13 +467,14 @@
       } else if (currentTab === 'schedule') {
         var scheduleHtml = events.map(function(e) {
           var md = getMonthDay(e.date);
-          return '<div class="card schedule-card" onclick="showEventDetail(\'' + e.id + '\')">' +
+          return '<div class="card schedule-card">' +
             '<div class="schedule-date"><div class="schedule-month">' + md.month + '</div><div class="schedule-day">' + md.day + '</div></div>' +
             '<div class="schedule-info">' +
               '<span class="schedule-type ' + e.type + '">' + e.type + '</span>' +
               '<div class="event-title">' + e.title + '</div>' +
               '<div class="event-time">' + e.time + ' • ' + e.location + '</div>' +
             '</div>' +
+            '<button class="directions-btn-small" onclick="getDirections(\'' + e.id + '\')" style="flex:none;width:auto">🗺️</button>' +
           '</div>';
         }).join('');
         content = '<h2 style="margin-bottom:16px">Schedule</h2>' + scheduleHtml;
@@ -521,11 +528,16 @@
 
       if (currentTab === 'home') {
         var eventsHtml = events.slice(0, 3).map(function(e) {
-          return '<div class="card event-card" onclick="showEventDetail(\'' + e.id + '\')">' +
+          return '<div class="card event-card">' +
             '<div class="event-icon ' + e.type + '">' + (e.type === 'game' ? '⚽' : '🏃') + '</div>' +
             '<div class="event-info">' +
               '<div class="event-title">' + e.title + '</div>' +
               '<div class="event-time">' + formatDate(e.date) + ' • ' + e.time + '</div>' +
+              '<div class="event-location">📍 ' + e.location + '</div>' +
+            '</div>' +
+            '<div class="event-badge">' + getDaysUntil(e.date) + '</div>' +
+            '<div class="event-actions">' +
+              '<button class="directions-btn-small" onclick="event.stopPropagation(); getDirections(\'' + e.id + '\')">🗺️ Get Directions</button>' +
             '</div>' +
           '</div>';
         }).join('');
@@ -563,13 +575,14 @@
       } else if (currentTab === 'schedule') {
         var scheduleHtml = events.map(function(e) {
           var md = getMonthDay(e.date);
-          return '<div class="card schedule-card" onclick="showEventDetail(\'' + e.id + '\')">' +
+          return '<div class="card schedule-card">' +
             '<div class="schedule-date"><div class="schedule-month">' + md.month + '</div><div class="schedule-day">' + md.day + '</div></div>' +
             '<div class="schedule-info">' +
               '<span class="schedule-type ' + e.type + '">' + e.type + '</span>' +
               '<div class="event-title">' + e.title + '</div>' +
               '<div class="event-time">' + e.time + ' • ' + e.location + '</div>' +
             '</div>' +
+            '<button class="directions-btn-small" onclick="getDirections(\'' + e.id + '\')" style="flex:none;width:auto">🗺️</button>' +
           '</div>';
         }).join('');
         content = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2>Schedule</h2><button class="btn btn-primary btn-small" onclick="showAddEvent()">+ Add</button></div>' + scheduleHtml;
