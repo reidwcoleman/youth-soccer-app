@@ -258,7 +258,8 @@
             { id: 'chat-team', name: 'Team Chat', icon: '💬', teamId: 'team-1', type: 'team' },
             { id: 'chat-carpool', name: 'Carpool Coordination', icon: '🚗', teamId: 'team-1', type: 'carpool' },
             { id: 'chat-parents', name: 'Parents Lounge', icon: '👨‍👩‍👧', teamId: 'team-1', type: 'parents' },
-            { id: 'chat-coaches', name: 'Coaches Only', icon: '🏆', teamId: 'team-1', type: 'coaches' }
+            { id: 'chat-coaches', name: 'Coaches Only', icon: '🏆', teamId: 'team-1', type: 'coaches' },
+            { id: 'chat-cg-1', name: 'Neighborhood Crew Chat', icon: '🚗', teamId: 'team-1', type: 'carpool-group', carpoolGroupId: 'cg-1', memberIds: ['parent-1', 'parent-2', 'parent-3'] }
           ],
           messages: [
             { id: 'm1', chatId: 'chat-team', oderId: 'coach-1', senderName: 'Coach Mike', text: 'Great practice today! Remember water bottles Saturday 💪', time: Date.now() - 3600000 },
@@ -266,10 +267,12 @@
             { id: 'm3', chatId: 'chat-team', oderId: 'parent-2', senderName: 'David Chen', text: 'I can bring oranges for halftime 🍊', time: Date.now() - 2400000 },
             { id: 'm4', chatId: 'chat-carpool', oderId: 'parent-3', senderName: 'Maria Martinez', text: 'Anyone need a ride Saturday?', time: Date.now() - 1800000 },
             { id: 'm5', chatId: 'chat-parents', oderId: 'parent-1', senderName: 'Sarah Wilson', text: 'Should we do a group gift for Coach Mike? 🎁', time: Date.now() - 7200000 },
-            { id: 'm6', chatId: 'chat-parents', oderId: 'parent-2', senderName: 'David Chen', text: 'Great idea! Count us in!', time: Date.now() - 6800000 }
+            { id: 'm6', chatId: 'chat-parents', oderId: 'parent-2', senderName: 'David Chen', text: 'Great idea! Count us in!', time: Date.now() - 6800000 },
+            { id: 'm7', chatId: 'chat-cg-1', oderId: 'parent-1', senderName: 'Sarah Wilson', text: 'Hey neighbors! Ready to coordinate rides this season? 🚗', time: Date.now() - 5000000 },
+            { id: 'm8', chatId: 'chat-cg-1', oderId: 'parent-2', senderName: 'David Chen', text: 'Sounds great! I can drive on Saturdays', time: Date.now() - 4800000 }
           ],
           carpoolGroups: [
-            { id: 'cg-1', teamId: 'team-1', name: 'Neighborhood Crew', creatorId: 'parent-1', memberIds: ['parent-1', 'parent-2', 'parent-3'] }
+            { id: 'cg-1', teamId: 'team-1', name: 'Neighborhood Crew', creatorId: 'parent-1', memberIds: ['parent-1', 'parent-2', 'parent-3'], chatId: 'chat-cg-1' }
           ],
           rideOffers: [
             { id: 'ride-1', groupId: 'cg-1', eventId: 'e1', driverId: 'parent-1', driverName: 'Sarah Wilson', seats: 3, passengers: ['parent-2'] },
@@ -707,6 +710,7 @@
               var u = users.find(function(usr) { return usr.id === mid; });
               return u ? (mid === currentUser.id ? 'You' : u.name.split(' ')[0]) : 'Unknown';
             });
+            var chatId = g.chatId || '';
             return '<div class="carpool-group">' +
               '<div class="carpool-group-header">' +
                 '<div class="carpool-group-icon">🚗</div>' +
@@ -714,13 +718,17 @@
                   '<div class="carpool-group-name">' + g.name + '</div>' +
                   '<div class="carpool-group-members">' + g.memberIds.length + ' members</div>' +
                 '</div>' +
+                (chatId ? '<button class="btn btn-primary btn-small" onclick="openChat(\'' + chatId + '\')" style="padding:8px 12px">💬</button>' : '') +
               '</div>' +
               '<div class="carpool-members-list">' +
                 memberNames.map(function(n) {
                   return '<span class="carpool-member-chip' + (n === 'You' ? ' you' : '') + '">' + n + '</span>';
                 }).join('') +
               '</div>' +
-              (g.creatorId === currentUser.id ? '<button class="btn btn-outline btn-small" style="margin-top:12px" onclick="showInviteToGroup(\'' + g.id + '\')">+ Invite Parent</button>' : '') +
+              '<div style="display:flex;gap:8px;margin-top:12px">' +
+                (chatId ? '<button class="btn btn-outline btn-small" onclick="openChat(\'' + chatId + '\')" style="flex:1">💬 Group Chat</button>' : '') +
+                (g.creatorId === currentUser.id ? '<button class="btn btn-outline btn-small" onclick="showInviteToGroup(\'' + g.id + '\')" style="flex:1">+ Invite</button>' : '') +
+              '</div>' +
             '</div>';
           }).join('');
 
@@ -1139,13 +1147,43 @@
 
       var data = Storage.getData();
       if (!data.carpoolGroups) data.carpoolGroups = [];
+
+      var groupId = genId();
+      var chatId = 'chat-carpool-group-' + groupId;
+
+      // Create the carpool group
       data.carpoolGroups.push({
-        id: genId(),
+        id: groupId,
         teamId: currentUser.teamId,
         name: name,
         creatorId: currentUser.id,
+        memberIds: memberIds,
+        chatId: chatId
+      });
+
+      // Create a group chat for this carpool group
+      if (!data.chats) data.chats = [];
+      data.chats.push({
+        id: chatId,
+        name: name + ' Chat',
+        icon: '🚗',
+        teamId: currentUser.teamId,
+        type: 'carpool-group',
+        carpoolGroupId: groupId,
         memberIds: memberIds
       });
+
+      // Add a welcome message
+      if (!data.messages) data.messages = [];
+      data.messages.push({
+        id: genId(),
+        chatId: chatId,
+        oderId: currentUser.id,
+        senderName: currentUser.name,
+        text: 'Welcome to the ' + name + ' carpool group chat! 🚗',
+        time: Date.now()
+      });
+
       Storage.saveData(data);
       closeModal();
       render();
@@ -1190,9 +1228,16 @@
       var group = data.carpoolGroups.find(function(g) { return g.id === groupId; });
       if (!group) return;
 
+      // Also find the associated chat
+      var chat = data.chats.find(function(c) { return c.carpoolGroupId === groupId; });
+
       checkboxes.forEach(function(cb) {
         if (group.memberIds.indexOf(cb.value) === -1) {
           group.memberIds.push(cb.value);
+          // Also add to chat members
+          if (chat && chat.memberIds && chat.memberIds.indexOf(cb.value) === -1) {
+            chat.memberIds.push(cb.value);
+          }
         }
       });
       Storage.saveData(data);
