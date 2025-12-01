@@ -26,6 +26,121 @@ const loadGoogleMapsScript = () => {
   });
 };
 
+// OpenRouteService API Key - Get free key at openrouteservice.org
+const ORS_API_KEY = 'YOUR_OPENROUTESERVICE_API_KEY';
+
+// OpenRouteService Routing Functions
+const RoutingService = {
+  // Optimize route for multiple pickups using TSP solver
+  async optimizeRoute(driverCoords, passengerCoords, destinationCoords) {
+    try {
+      const jobs = passengerCoords.map((p, i) => ({
+        id: i + 1,
+        location: [p.lng, p.lat],
+        service: 120, // 2 minutes pickup time
+        delivery: [1]
+      }));
+
+      const vehicles = [{
+        id: 1,
+        profile: 'driving-car',
+        start: [driverCoords.lng, driverCoords.lat],
+        end: [destinationCoords.lng, destinationCoords.lat],
+        capacity: [passengerCoords.length + 1]
+      }];
+
+      const response = await fetch('https://api.openrouteservice.org/optimization', {
+        method: 'POST',
+        headers: {
+          'Authorization': ORS_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ jobs, vehicles })
+      });
+
+      if (!response.ok) throw new Error('Route optimization failed');
+      return await response.json();
+    } catch (err) {
+      console.error('Routing error:', err);
+      return null;
+    }
+  },
+
+  // Get directions with turn-by-turn instructions
+  async getDirections(coordinates) {
+    try {
+      const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+        method: 'POST',
+        headers: {
+          'Authorization': ORS_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          coordinates,
+          instructions: true,
+          geometry: true
+        })
+      });
+
+      if (!response.ok) throw new Error('Directions request failed');
+      return await response.json();
+    } catch (err) {
+      console.error('Directions error:', err);
+      return null;
+    }
+  }
+};
+
+// Helper function to format distance in meters to readable format
+const formatDistance = (meters) => {
+  if (meters < 1000) return `${Math.round(meters)}m`;
+  return `${(meters / 1000).toFixed(1)}km`;
+};
+
+// Helper function to format duration in seconds to readable format
+const formatDuration = (seconds) => {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  return `${hours}h ${remainingMins}m`;
+};
+
+// Calculate pickup times based on route duration
+const calculatePickupTimes = (departureTime, routeSegments) => {
+  const times = [];
+  let accumulatedSeconds = 0;
+
+  routeSegments.forEach((segment, idx) => {
+    accumulatedSeconds += segment.duration;
+    const pickupTime = new Date(departureTime.getTime() + accumulatedSeconds * 1000);
+    times.push({
+      index: idx,
+      eta: pickupTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      etaDate: pickupTime
+    });
+  });
+
+  return times;
+};
+
+// Calculate suggested departure time based on event arrival time
+const calculateDepartureTime = (arriveByStr, totalDurationSeconds) => {
+  // Parse arriveBy time (e.g., "9:15 AM")
+  const [time, period] = arriveByStr.split(' ');
+  const [hours, mins] = time.split(':').map(Number);
+
+  const arriveDate = new Date();
+  let arriveHours = hours;
+  if (period === 'PM' && hours !== 12) arriveHours += 12;
+  if (period === 'AM' && hours === 12) arriveHours = 0;
+  arriveDate.setHours(arriveHours, mins, 0, 0);
+
+  // Subtract total duration plus 5 minute buffer
+  const departTime = new Date(arriveDate.getTime() - (totalDurationSeconds + 300) * 1000);
+  return departTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 // Location Search Component with Google Places Autocomplete
 const LocationSearchInput = ({ value, onChange, onPlaceSelected, placeholder, inputStyle }) => {
   const inputRef = useRef(null);
@@ -175,12 +290,12 @@ const createInitialDB = () => ({
     { id: 'player-6', name: 'Mason Davis', parentId: 'parent-6', teamId: 'team-1', jersey: 9 },
   ],
   parents: [
-    { id: 'parent-1', name: 'Sarah Wilson', email: 'sarah@email.com', canDrive: true, seats: 3, teamId: 'team-1' },
-    { id: 'parent-2', name: 'David Chen', email: 'david@email.com', canDrive: true, seats: 4, teamId: 'team-1' },
-    { id: 'parent-3', name: 'Maria Martinez', email: 'maria@email.com', canDrive: true, seats: 2, teamId: 'team-1' },
-    { id: 'parent-4', name: 'Mike Johnson', email: 'mike@email.com', canDrive: false, seats: 0, teamId: 'team-1' },
-    { id: 'parent-5', name: 'Jen Thompson', email: 'jen@email.com', canDrive: true, seats: 3, teamId: 'team-1' },
-    { id: 'parent-6', name: 'Chris Davis', email: 'chris@email.com', canDrive: true, seats: 4, teamId: 'team-1' },
+    { id: 'parent-1', name: 'Sarah Wilson', email: 'sarah@email.com', canDrive: true, seats: 3, teamId: 'team-1', address: '123 Oak Street', addressFull: '123 Oak Street, Cary, NC 27513', addressLat: 35.7915, addressLng: -78.7811, addressPlaceId: 'ChIJ1' },
+    { id: 'parent-2', name: 'David Chen', email: 'david@email.com', canDrive: true, seats: 4, teamId: 'team-1', address: '456 Pine Avenue', addressFull: '456 Pine Avenue, Cary, NC 27518', addressLat: 35.8205, addressLng: -78.7691, addressPlaceId: 'ChIJ2' },
+    { id: 'parent-3', name: 'Maria Martinez', email: 'maria@email.com', canDrive: true, seats: 2, teamId: 'team-1', address: '789 Maple Drive', addressFull: '789 Maple Drive, Cary, NC 27519', addressLat: 35.8105, addressLng: -78.7901, addressPlaceId: 'ChIJ3' },
+    { id: 'parent-4', name: 'Mike Johnson', email: 'mike@email.com', canDrive: false, seats: 0, teamId: 'team-1', address: '321 Elm Court', addressFull: '321 Elm Court, Cary, NC 27511', addressLat: 35.7805, addressLng: -78.7601, addressPlaceId: 'ChIJ4' },
+    { id: 'parent-5', name: 'Jen Thompson', email: 'jen@email.com', canDrive: true, seats: 3, teamId: 'team-1', address: '654 Birch Lane', addressFull: '654 Birch Lane, Cary, NC 27513', addressLat: 35.7955, addressLng: -78.7731, addressPlaceId: 'ChIJ5' },
+    { id: 'parent-6', name: 'Chris Davis', email: 'chris@email.com', canDrive: true, seats: 4, teamId: 'team-1', address: '987 Cedar Way', addressFull: '987 Cedar Way, Cary, NC 27519', addressLat: 35.8155, addressLng: -78.7851, addressPlaceId: 'ChIJ6' },
   ],
   chats: [
     { id: 'chat-team-1', teamId: 'team-1', name: 'Team Chat', type: 'team', icon: '💬' },
@@ -195,14 +310,14 @@ const createInitialDB = () => ({
     { id: 'msg-5', chatId: 'chat-carpool-1', senderId: 'parent-4', senderName: 'Mike Johnson', text: 'Noah needs a ride - we have a conflict', isCoach: false, createdAt: new Date(Date.now() - 1200000).toISOString() },
   ],
   events: [
-    { id: 'event-1', teamId: 'team-1', type: 'game', title: 'vs Thunder FC', date: '2025-12-06', time: '10:00 AM', location: 'North Fields Complex', field: 'Field 3', arriveBy: '9:15 AM', needsSnacks: true },
-    { id: 'event-2', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-03', time: '5:30 PM', location: 'Community Park', field: 'Field A', arriveBy: '5:15 PM', needsSnacks: false },
-    { id: 'event-3', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-05', time: '5:30 PM', location: 'Community Park', field: 'Field A', arriveBy: '5:15 PM', needsSnacks: false },
-    { id: 'event-4', teamId: 'team-1', type: 'game', title: 'vs Lightning', date: '2025-12-13', time: '2:00 PM', location: 'Riverside Soccer Complex', field: 'Field 7', arriveBy: '1:15 PM', needsSnacks: true },
+    { id: 'event-1', teamId: 'team-1', type: 'game', title: 'vs Thunder FC', date: '2025-12-06', time: '10:00 AM', location: 'North Fields Complex', locationAddress: 'North Fields Complex, Cary, NC', locationLat: 35.8305, locationLng: -78.7751, field: 'Field 3', arriveBy: '9:15 AM', needsSnacks: true },
+    { id: 'event-2', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-03', time: '5:30 PM', location: 'Community Park', locationAddress: 'Community Park, Cary, NC', locationLat: 35.7855, locationLng: -78.7681, field: 'Field A', arriveBy: '5:15 PM', needsSnacks: false },
+    { id: 'event-3', teamId: 'team-1', type: 'practice', title: 'Practice', date: '2025-12-05', time: '5:30 PM', location: 'Community Park', locationAddress: 'Community Park, Cary, NC', locationLat: 35.7855, locationLng: -78.7681, field: 'Field A', arriveBy: '5:15 PM', needsSnacks: false },
+    { id: 'event-4', teamId: 'team-1', type: 'game', title: 'vs Lightning', date: '2025-12-13', time: '2:00 PM', location: 'Riverside Soccer Complex', locationAddress: 'Riverside Soccer Complex, Cary, NC', locationLat: 35.8005, locationLng: -78.7921, field: 'Field 7', arriveBy: '1:15 PM', needsSnacks: true },
   ],
   carpools: [
-    { id: 'carpool-1', eventId: 'event-1', driverId: 'parent-1', driverName: 'Sarah Wilson', seats: 3, passengers: ['Liam Chen', 'Noah Johnson'] },
-    { id: 'carpool-2', eventId: 'event-1', driverId: 'parent-2', driverName: 'David Chen', seats: 4, passengers: ['Olivia Martinez'] },
+    { id: 'carpool-1', eventId: 'event-1', driverId: 'parent-1', driverName: 'Sarah Wilson', seats: 3, passengers: [{ playerId: 'player-2', playerName: 'Liam Chen', parentId: 'parent-2', status: 'confirmed' }, { playerId: 'player-4', playerName: 'Noah Johnson', parentId: 'parent-4', status: 'confirmed' }], tripStatus: 'scheduled', tripStartedAt: null, pickupOrder: [], pickupTimes: {}, suggestedDepartureTime: null, totalDuration: null, totalDistance: null },
+    { id: 'carpool-2', eventId: 'event-1', driverId: 'parent-2', driverName: 'David Chen', seats: 4, passengers: [{ playerId: 'player-3', playerName: 'Olivia Martinez', parentId: 'parent-3', status: 'confirmed' }], tripStatus: 'scheduled', tripStartedAt: null, pickupOrder: [], pickupTimes: {}, suggestedDepartureTime: null, totalDuration: null, totalDistance: null },
   ],
   carpoolGroups: [
     { id: 'cgroup-1', teamId: 'team-1', creatorId: 'parent-1', creatorName: 'Sarah Wilson', name: 'North Side Neighbors', type: 'private', memberIds: ['parent-1', 'parent-2', 'parent-3'], seats: 3, description: 'For families living in north side', createdAt: new Date(Date.now() - 86400000).toISOString() },
@@ -277,6 +392,8 @@ const CreateAccountScreen = ({ onBack, onCreateAccount, onSignIn, db, setDb }) =
   const [isCoach, setIsCoach] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', childName: '', teamName: '', ageGroup: 'U10', teamCode: '', canDrive: false, seats: '' });
   const [error, setError] = useState('');
+  const [addressInput, setAddressInput] = useState('');
+  const [selectedAddress, setSelectedAddress] = useState(null);
   const update = (k, v) => setForm({ ...form, [k]: v });
   const handleStep1 = () => { setError(''); if (!form.name) { setError('Please enter your name'); return; } if (!form.email) { setError('Please enter your email'); return; } if (db.users.find(u => u.email === form.email)) { setError('Email already registered'); return; } if (!form.password || form.password.length < 6) { setError('Password must be at least 6 characters'); return; } if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; } setStep(2); };
   const handleStep2 = () => {
@@ -298,7 +415,7 @@ const CreateAccountScreen = ({ onBack, onCreateAccount, onSignIn, db, setDb }) =
       const team = db.teams.find(t => t.code === form.teamCode);
       if (!team) { setError('Invalid team code'); return; }
       const userId = uuid(), parentId = uuid();
-      newDb.parents = [...db.parents, { id: parentId, name: form.name, email: form.email, canDrive: form.canDrive, seats: parseInt(form.seats) || 0, teamId: team.id }];
+      newDb.parents = [...db.parents, { id: parentId, name: form.name, email: form.email, canDrive: form.canDrive, seats: parseInt(form.seats) || 0, teamId: team.id, address: selectedAddress?.name || '', addressFull: selectedAddress?.address || '', addressLat: selectedAddress?.lat || null, addressLng: selectedAddress?.lng || null, addressPlaceId: selectedAddress?.placeId || '' }];
       newDb.players = [...db.players, { id: uuid(), name: form.childName, parentId, teamId: team.id, jersey: null }];
       const user = { id: userId, email: form.email, password: form.password, name: form.name, isCoach: false, teamId: team.id, parentId };
       newDb.users = [...db.users, user];
@@ -310,7 +427,7 @@ const CreateAccountScreen = ({ onBack, onCreateAccount, onSignIn, db, setDb }) =
     <div style={styles.authContainer}>
       <div style={styles.authHeader}><button style={styles.backBtn} onClick={step === 1 ? onBack : () => setStep(1)}>← Back</button><div style={styles.stepIndicator}><div style={{...styles.stepDot, background: '#16a34a'}}></div><div style={{...styles.stepLine, background: step >= 2 ? '#16a34a' : '#e5e7eb'}}></div><div style={{...styles.stepDot, background: step >= 2 ? '#16a34a' : '#e5e7eb'}}></div></div></div>
       <div style={styles.authContent}>
-        {step === 1 ? (<><h1 style={styles.authTitle}>Create your account</h1><p style={styles.authSubtitle}>Join TeamKick to coordinate with your team</p>{error && <div style={styles.errorBox}>{error}</div>}<div style={styles.roleToggle}><button style={{...styles.roleBtn, ...(!isCoach && styles.roleBtnActive)}} onClick={() => setIsCoach(false)}><span style={styles.roleIcon}>👨‍👩‍👧</span><span>Parent</span></button><button style={{...styles.roleBtn, ...(isCoach && styles.roleBtnActive)}} onClick={() => setIsCoach(true)}><span style={styles.roleIcon}>🏆</span><span>Coach</span></button></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Your Name</label><input type="text" style={styles.input} placeholder="Sarah Wilson" value={form.name} onChange={(e) => update('name', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Email</label><input type="email" style={styles.input} placeholder="you@example.com" value={form.email} onChange={(e) => update('email', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Password</label><input type="password" style={styles.input} placeholder="At least 6 characters" value={form.password} onChange={(e) => update('password', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Confirm Password</label><input type="password" style={styles.input} placeholder="Re-enter password" value={form.confirmPassword} onChange={(e) => update('confirmPassword', e.target.value)} /></div><button style={styles.btnPrimaryLarge} onClick={handleStep1}>Continue</button></>) : (<><h1 style={styles.authTitle}>{isCoach ? 'Set Up Your Team' : 'Team Details'}</h1><p style={styles.authSubtitle}>{isCoach ? 'Create your team and invite parents' : 'Tell us about your player'}</p>{error && <div style={styles.errorBox}>{error}</div>}{isCoach ? (<><div style={styles.inputGroup}><label style={styles.inputLabel}>Team Name</label><input type="text" style={styles.input} placeholder="Cary Lightning" value={form.teamName} onChange={(e) => update('teamName', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Age Group</label><select style={styles.input} value={form.ageGroup} onChange={(e) => update('ageGroup', e.target.value)}>{['U6','U8','U10','U12','U14','U16'].map(g => <option key={g} value={g}>{g}</option>)}</select></div></>) : (<><div style={styles.inputGroup}><label style={styles.inputLabel}>Child's Name</label><input type="text" style={styles.input} placeholder="Emma Wilson" value={form.childName} onChange={(e) => update('childName', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Team Code</label><input type="text" style={styles.input} placeholder="LIGHT-2025" value={form.teamCode} onChange={(e) => update('teamCode', e.target.value)} /><span style={styles.inputHint}>Ask your coach for the team code</span></div><div style={styles.checkboxGroup}><label style={styles.checkboxLabel}><input type="checkbox" checked={form.canDrive} onChange={(e) => update('canDrive', e.target.checked)} style={styles.checkbox} /><span>I can help with carpools</span></label></div>{form.canDrive && <div style={styles.inputGroup}><label style={styles.inputLabel}>Available Seats</label><input type="number" style={styles.input} placeholder="3" value={form.seats} onChange={(e) => update('seats', e.target.value)} /></div>}</>)}<button style={styles.btnPrimaryLarge} onClick={handleStep2}>{isCoach ? 'Create Team' : 'Join Team'}</button></>)}
+        {step === 1 ? (<><h1 style={styles.authTitle}>Create your account</h1><p style={styles.authSubtitle}>Join TeamKick to coordinate with your team</p>{error && <div style={styles.errorBox}>{error}</div>}<div style={styles.roleToggle}><button style={{...styles.roleBtn, ...(!isCoach && styles.roleBtnActive)}} onClick={() => setIsCoach(false)}><span style={styles.roleIcon}>👨‍👩‍👧</span><span>Parent</span></button><button style={{...styles.roleBtn, ...(isCoach && styles.roleBtnActive)}} onClick={() => setIsCoach(true)}><span style={styles.roleIcon}>🏆</span><span>Coach</span></button></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Your Name</label><input type="text" style={styles.input} placeholder="Sarah Wilson" value={form.name} onChange={(e) => update('name', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Email</label><input type="email" style={styles.input} placeholder="you@example.com" value={form.email} onChange={(e) => update('email', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Password</label><input type="password" style={styles.input} placeholder="At least 6 characters" value={form.password} onChange={(e) => update('password', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Confirm Password</label><input type="password" style={styles.input} placeholder="Re-enter password" value={form.confirmPassword} onChange={(e) => update('confirmPassword', e.target.value)} /></div><button style={styles.btnPrimaryLarge} onClick={handleStep1}>Continue</button></>) : (<><h1 style={styles.authTitle}>{isCoach ? 'Set Up Your Team' : 'Team Details'}</h1><p style={styles.authSubtitle}>{isCoach ? 'Create your team and invite parents' : 'Tell us about your player'}</p>{error && <div style={styles.errorBox}>{error}</div>}{isCoach ? (<><div style={styles.inputGroup}><label style={styles.inputLabel}>Team Name</label><input type="text" style={styles.input} placeholder="Cary Lightning" value={form.teamName} onChange={(e) => update('teamName', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Age Group</label><select style={styles.input} value={form.ageGroup} onChange={(e) => update('ageGroup', e.target.value)}>{['U6','U8','U10','U12','U14','U16'].map(g => <option key={g} value={g}>{g}</option>)}</select></div></>) : (<><div style={styles.inputGroup}><label style={styles.inputLabel}>Child's Name</label><input type="text" style={styles.input} placeholder="Emma Wilson" value={form.childName} onChange={(e) => update('childName', e.target.value)} /></div><div style={styles.inputGroup}><label style={styles.inputLabel}>Team Code</label><input type="text" style={styles.input} placeholder="LIGHT-2025" value={form.teamCode} onChange={(e) => update('teamCode', e.target.value)} /><span style={styles.inputHint}>Ask your coach for the team code</span></div><div style={styles.checkboxGroup}><label style={styles.checkboxLabel}><input type="checkbox" checked={form.canDrive} onChange={(e) => update('canDrive', e.target.checked)} style={styles.checkbox} /><span>I can help with carpools</span></label></div>{form.canDrive && <div style={styles.inputGroup}><label style={styles.inputLabel}>Available Seats</label><input type="number" style={styles.input} placeholder="3" value={form.seats} onChange={(e) => update('seats', e.target.value)} /></div>}<div style={styles.inputGroup}><label style={styles.inputLabel}>Home Address</label><LocationSearchInput value={addressInput} onChange={setAddressInput} onPlaceSelected={(place) => { setSelectedAddress(place); setAddressInput(place.name); }} placeholder="Enter your home address..." inputStyle={styles.input} />{selectedAddress && <div style={styles.selectedLocationBox}><span style={styles.selectedLocationIcon}>✓</span><div style={styles.selectedLocationText}><div style={styles.selectedLocationName}>{selectedAddress.name}</div><div style={styles.selectedLocationAddress}>{selectedAddress.address}</div></div><button style={styles.selectedLocationEdit} onClick={() => { setSelectedAddress(null); setAddressInput(''); }}>Change</button></div>}<span style={styles.inputHint}>Used to calculate carpool pickup times</span></div></>)}<button style={styles.btnPrimaryLarge} onClick={handleStep2}>{isCoach ? 'Create Team' : 'Join Team'}</button></>)}
       </div>
       <div style={styles.authFooter}><span style={styles.footerText}>Already have an account?</span><button style={styles.footerLink} onClick={onSignIn}>Sign in</button></div>
     </div>
@@ -324,6 +441,189 @@ const ToastNotification = ({ notification, onDismiss }) => { useEffect(() => { c
 const NotificationBell = ({ count, onClick }) => (<button style={styles.bellButton} onClick={onClick}><span style={styles.bellIcon}>🔔</span>{count > 0 && <span style={styles.bellBadge}>{count > 9 ? '9+' : count}</span>}</button>);
 
 const NotificationsScreen = ({ notifications, onMarkRead, onMarkAllRead, onBack }) => { const icons = { game: '⚽', carpool: '🚗', volunteer: '🍎', announcement: '📢', reminder: '⏰', chat: '💬' }; const colors = { game: '#ffedd5', carpool: '#dbeafe', volunteer: '#fef3c7', announcement: '#dcfce7', reminder: '#f3e8ff', chat: '#e0e7ff' }; return (<div style={styles.notificationsContainer}><div style={styles.notificationsHeader}><button style={styles.backBtn} onClick={onBack}>← Back</button><h2 style={styles.notificationsTitle}>Notifications</h2><div style={{width:40}}></div></div>{notifications.length > 0 && <div style={styles.notificationsActions}><button style={styles.actionLink} onClick={onMarkAllRead}>Mark all read</button></div>}<div style={styles.notificationsList}>{notifications.length === 0 ? (<div style={styles.emptyNotifications}><div style={styles.emptyIcon}>🔔</div><div style={styles.emptyTitle}>No notifications</div><div style={styles.emptySubtitle}>You're all caught up!</div></div>) : notifications.map(n => (<div key={n.id} style={{...styles.notificationItem, background: n.read ? 'white' : '#f0fdf4'}} onClick={() => onMarkRead(n.id)}><div style={{...styles.notificationIcon, background: colors[n.type] || '#f3f4f6'}}>{icons[n.type] || '🔔'}</div><div style={styles.notificationContent}><div style={styles.notificationItemTitle}>{n.title}</div><div style={styles.notificationMessage}>{n.message}</div><div style={styles.notificationTime}>{getRelativeTime(n.createdAt)}</div></div>{!n.read && <div style={styles.unreadDot}></div>}</div>))}</div></div>); };
+
+const CarpoolDriverView = ({ carpool, event, db, setDb, user, onBack, setToast }) => {
+  const [loading, setLoading] = useState(false);
+  const [routeCalculated, setRouteCalculated] = useState(carpool.pickupOrder && carpool.pickupOrder.length > 0);
+  const [suggestedDeparture, setSuggestedDeparture] = useState(carpool.suggestedDepartureTime);
+  const [pickupOrder, setPickupOrder] = useState(carpool.pickupOrder || []);
+  const [pickupTimes, setPickupTimes] = useState(carpool.pickupTimes || {});
+
+  const driver = db.parents.find(p => p.id === carpool.driverId);
+
+  const calculateRoute = async () => {
+    if (!driver || !driver.addressLat || !event.locationLat || carpool.passengers.length === 0) {
+      setToast({ type: 'carpool', title: 'Missing Information', message: 'Need addresses for all passengers' });
+      return;
+    }
+
+    setLoading(true);
+    const driverCoords = { lat: driver.addressLat, lng: driver.addressLng };
+    const destinationCoords = { lat: event.locationLat, lng: event.locationLng };
+
+    const passengerCoords = carpool.passengers.map(p => {
+      const parent = db.parents.find(par => par.id === p.parentId);
+      return {
+        parentId: p.parentId,
+        lat: parent.addressLat,
+        lng: parent.addressLng
+      };
+    });
+
+    const result = await RoutingService.optimizeRoute(driverCoords, passengerCoords, destinationCoords);
+
+    if (result && result.routes && result.routes.length > 0) {
+      const route = result.routes[0];
+      const orderedSteps = route.steps.filter(s => s.type === 'job').map(s => {
+        const jobId = s.job;
+        return passengerCoords[jobId - 1].parentId;
+      });
+
+      setPickupOrder(orderedSteps);
+      const departure = calculateDepartureTime(event.arriveBy || event.time, route.duration);
+      setSuggestedDeparture(departure);
+
+      const updatedCarpool = {
+        ...carpool,
+        pickupOrder: orderedSteps,
+        suggestedDepartureTime: departure,
+        totalDuration: route.duration,
+        totalDistance: route.distance
+      };
+
+      setDb({
+        ...db,
+        carpools: db.carpools.map(c => c.id === carpool.id ? updatedCarpool : c)
+      });
+
+      setRouteCalculated(true);
+      setToast({ type: 'carpool', title: 'Route Calculated!', message: 'Optimal pickup order ready' });
+    } else {
+      setToast({ type: 'carpool', title: 'Route Failed', message: 'Could not calculate route' });
+    }
+
+    setLoading(false);
+  };
+
+  const startPickups = () => {
+    const now = new Date();
+    const notifications = pickupOrder.map((parentId, idx) => ({
+      id: uuid(),
+      teamId: event.teamId,
+      type: 'driver_started',
+      title: `Your Ride is On The Way!`,
+      message: `${driver.name} is picking up players. You're stop ${idx + 1} of ${pickupOrder.length}.`,
+      targetParentId: parentId,
+      read: false,
+      createdAt: now.toISOString()
+    }));
+
+    setDb({
+      ...db,
+      carpools: db.carpools.map(c => c.id === carpool.id ? {
+        ...c,
+        tripStatus: 'picking_up',
+        tripStartedAt: now.toISOString()
+      } : c),
+      notifications: [...db.notifications, ...notifications]
+    });
+
+    setToast({ type: 'carpool', title: 'Pickups Started!', message: 'Passengers have been notified' });
+  };
+
+  const openNavigation = () => {
+    if (pickupOrder.length > 0) {
+      const firstParent = db.parents.find(p => p.id === pickupOrder[0]);
+      if (firstParent && firstParent.addressFull) {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(firstParent.addressFull)}`, '_blank');
+      }
+    }
+  };
+
+  return (
+    <div style={styles.app}>
+      <div style={styles.header}>
+        <button style={styles.backBtn} onClick={onBack}>← Back</button>
+        <span style={styles.logo}>TeamKick</span>
+        <div style={{width: 40}}></div>
+      </div>
+      <div style={styles.content}>
+        <h2 style={styles.pageTitle}>Your Carpool Route</h2>
+        <div style={styles.eventMeta}>{event.title} - {formatDate(event.date)} at {event.time}</div>
+
+        {!routeCalculated ? (
+          <div style={{marginTop: 24}}>
+            <div style={styles.routeCard}>
+              <div style={styles.routeIcon}>🚗</div>
+              <h3>Ready to Calculate Route</h3>
+              <p style={{marginTop: 8, color: '#6b7280'}}>
+                Picking up {carpool.passengers.length} player{carpool.passengers.length !== 1 ? 's' : ''}
+              </p>
+              <button
+                style={{...styles.btnStartTrip, marginTop: 16}}
+                onClick={calculateRoute}
+                disabled={loading}
+              >
+                {loading ? 'Calculating...' : 'Calculate Optimal Route'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={styles.driverRouteCard}>
+              <div style={styles.departureLabel}>Suggested Departure Time</div>
+              <div style={styles.departureTime}>{suggestedDeparture || 'Calculating...'}</div>
+              <div style={styles.departureNote}>To arrive by {event.arriveBy || event.time}</div>
+            </div>
+
+            <h3 style={styles.sectionTitle}>Pickup Order</h3>
+            <div style={styles.pickupList}>
+              {pickupOrder.map((parentId, idx) => {
+                const parent = db.parents.find(p => p.id === parentId);
+                const passenger = carpool.passengers.find(p => p.parentId === parentId);
+                return (
+                  <div key={parentId} style={styles.pickupItem}>
+                    <div style={styles.pickupNumber}>{idx + 1}</div>
+                    <div style={styles.pickupInfo}>
+                      <div style={styles.pickupPlayerName}>{passenger?.playerName || 'Unknown'}</div>
+                      <div style={styles.pickupAddress}>{parent?.addressFull || parent?.address || 'No address'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={styles.pickupItem}>
+                <div style={{...styles.pickupNumber, background: '#f59e0b'}}>🏁</div>
+                <div style={styles.pickupInfo}>
+                  <div style={styles.pickupPlayerName}>{event.location}</div>
+                  <div style={styles.pickupAddress}>{event.locationAddress || event.field || ''}</div>
+                </div>
+              </div>
+            </div>
+
+            {carpool.tripStatus === 'scheduled' ? (
+              <div style={{display: 'flex', gap: 12}}>
+                <button style={{...styles.btnStartTrip, flex: 1}} onClick={startPickups}>
+                  Start Pickups - Notify Passengers
+                </button>
+                <button style={{...styles.btnSecondary, flex: 1}} onClick={openNavigation}>
+                  Open Navigation
+                </button>
+              </div>
+            ) : (
+              <div style={styles.tripActiveCard}>
+                <div style={styles.tripActiveIcon}>✓</div>
+                <div style={styles.tripActiveText}>Trip in progress</div>
+                <div style={styles.tripStartedAt}>
+                  Started at {formatTime(carpool.tripStartedAt)}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const ChatScreen = ({ user, chat, messages, onSendMessage, onBack }) => {
   const [newMessage, setNewMessage] = useState('');
@@ -525,16 +825,22 @@ const ParentDashboard = ({ user, db, setDb, onLogout }) => {
   const [toast, setToast] = useState(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroup, setNewGroup] = useState({ name: '', type: 'public', description: '', seats: 3, memberIds: [] });
+  const [showDriverView, setShowDriverView] = useState(null);
 
   const team = db.teams.find(t => t.id === user.teamId);
   const roster = db.players.filter(p => p.teamId === user.teamId).map(p => ({ ...p, parent: db.parents.find(x => x.id === p.parentId)?.name || 'Unknown', canDrive: db.parents.find(x => x.id === p.parentId)?.canDrive, seats: db.parents.find(x => x.id === p.parentId)?.seats }));
   const events = db.events.filter(e => e.teamId === user.teamId).sort((a, b) => new Date(a.date) - new Date(b.date));
   const chats = db.chats.filter(c => c.teamId === user.teamId && c.type !== 'coaches').map(c => ({ ...c, messageCount: db.messages.filter(m => m.chatId === c.id).length, lastMessage: db.messages.filter(m => m.chatId === c.id).slice(-1)[0]?.text || '' }));
-  const notifications = db.notifications.filter(n => n.teamId === user.teamId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const notifications = db.notifications.filter(n => {
+    if (n.teamId !== user.teamId) return false;
+    // Filter carpool notifications by targetParentId
+    if (n.targetParentId && n.targetParentId !== user.parentId) return false;
+    return true;
+  }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const offerRide = (eventId) => { setDb({ ...db, carpools: [...db.carpools, { id: uuid(), eventId, driverId: user.id, driverName: user.name, seats: 3, passengers: [] }] }); setToast({ type: 'carpool', title: 'Ride Offered!', message: 'Your carpool has been added' }); };
-  const requestRide = (id) => { const c = db.carpools.find(x => x.id === id); if (c && c.passengers.length < c.seats) setDb({ ...db, carpools: db.carpools.map(x => x.id === id ? { ...x, passengers: [...x.passengers, 'My child'] } : x) }); setToast({ type: 'carpool', title: 'Ride Requested!', message: "You've been added" }); };
+  const offerRide = (eventId) => { const parent = db.parents.find(p => p.id === user.parentId); setDb({ ...db, carpools: [...db.carpools, { id: uuid(), eventId, driverId: user.parentId, driverName: user.name, seats: parent?.seats || 3, passengers: [], tripStatus: 'scheduled', tripStartedAt: null, pickupOrder: [], pickupTimes: {}, suggestedDepartureTime: null, totalDuration: null, totalDistance: null }] }); setToast({ type: 'carpool', title: 'Ride Offered!', message: 'Your carpool has been added' }); };
+  const requestRide = (id) => { const c = db.carpools.find(x => x.id === id); const myPlayer = db.players.find(p => p.parentId === user.parentId); if (c && c.passengers.length < c.seats && myPlayer) { const alreadyPassenger = c.passengers.some(p => (typeof p === 'string' && p === myPlayer.name) || (typeof p === 'object' && p.parentId === user.parentId)); if (!alreadyPassenger) { const newPassenger = { playerId: myPlayer.id, playerName: myPlayer.name, parentId: user.parentId, status: 'confirmed' }; setDb({ ...db, carpools: db.carpools.map(x => x.id === id ? { ...x, passengers: [...x.passengers, newPassenger] } : x) }); setToast({ type: 'carpool', title: 'Ride Requested!', message: "You've been added" }); } } };
   const volunteer = (id) => { const d = db.duties.find(x => x.id === id); if (d) { setDb({ ...db, duties: db.duties.map(x => x.id === id ? { ...x, assignedTo: user.name, assignedId: user.id } : x) }); setToast({ type: 'volunteer', title: 'Thank You!', message: `Signed up for ${d.type}` }); } };
   const markRead = (id) => setDb({ ...db, notifications: db.notifications.map(n => n.id === id ? { ...n, read: true } : n) });
   const markAllRead = () => setDb({ ...db, notifications: db.notifications.map(n => n.teamId === user.teamId ? { ...n, read: true } : n) });
@@ -554,6 +860,13 @@ const ParentDashboard = ({ user, db, setDb, onLogout }) => {
 
   if (showNotifications) return <NotificationsScreen notifications={notifications} onMarkRead={markRead} onMarkAllRead={markAllRead} onBack={() => setShowNotifications(false)} />;
   if (showChat) return <ChatScreen user={user} chat={showChat} messages={db.messages} onSendMessage={sendMessage} onBack={() => setShowChat(null)} />;
+  if (showDriverView) {
+    const carpool = db.carpools.find(c => c.id === showDriverView);
+    const event = db.events.find(e => e.id === carpool?.eventId);
+    if (carpool && event) {
+      return <CarpoolDriverView carpool={carpool} event={event} db={db} setDb={setDb} user={user} onBack={() => setShowDriverView(null)} setToast={setToast} />;
+    }
+  }
 
   if (selectedEvent) {
     const event = events.find(e => e.id === selectedEvent);
@@ -567,7 +880,7 @@ const ParentDashboard = ({ user, db, setDb, onLogout }) => {
         <div style={styles.content}>
           <button onClick={() => setSelectedEvent(null)} style={styles.backBtn}>← Back</button>
           <div style={{...styles.eventHero, background: isGame ? '#fff7ed' : '#eff6ff'}}><div style={styles.eventTypeRow}><span style={{fontSize: 28}}>{isGame ? '⚽' : '🏃'}</span><span style={{...styles.typeBadge, background: isGame ? '#fed7aa' : '#bfdbfe', color: isGame ? '#c2410c' : '#1d4ed8'}}>{event.type.toUpperCase()}</span></div><h2 style={styles.eventHeroTitle}>{event.title}</h2><div style={styles.eventDetails}><p style={styles.detailRow}>📅 {formatDate(event.date)} at {event.time}</p><p style={{...styles.detailRow, cursor: 'pointer'}} onClick={() => openLocationInMaps(event)}>📍 {event.location} {event.field && `- ${event.field}`} <span style={styles.mapLink}>View on Map</span></p>{event.arriveBy && <p style={{...styles.detailRow, color: '#dc2626', fontWeight: 500}}>⏰ Arrive by {event.arriveBy}</p>}</div></div>
-          <div style={styles.card}><div style={styles.cardHeader}><h3 style={styles.cardTitle}>🚗 Carpools</h3><button style={styles.btnPrimary} onClick={() => offerRide(event.id)}>+ Offer</button></div>{carpools.length === 0 ? <p style={styles.emptyText}>No carpools yet</p> : carpools.map(c => (<div key={c.id} style={styles.listItem}><div style={styles.listItemHeader}><div><div style={styles.driverName}>🚗 {c.driverName}</div><div style={styles.itemSubtitle}>{c.passengers.length}/{c.seats} seats</div></div>{c.passengers.length < c.seats && c.driverId !== user.id && <button style={styles.btnLink} onClick={() => requestRide(c.id)}>Request</button>}</div>{c.passengers.length > 0 && <p style={styles.passengers}>Passengers: {c.passengers.join(', ')}</p>}</div>))}</div>
+          <div style={styles.card}><div style={styles.cardHeader}><h3 style={styles.cardTitle}>🚗 Carpools</h3><button style={styles.btnPrimary} onClick={() => offerRide(event.id)}>+ Offer</button></div>{carpools.length === 0 ? <p style={styles.emptyText}>No carpools yet</p> : carpools.map(c => (<div key={c.id} style={styles.listItem}><div style={styles.listItemHeader}><div><div style={styles.driverName}>🚗 {c.driverName}</div><div style={styles.itemSubtitle}>{c.passengers.length}/{c.seats} seats</div></div><div style={{display: 'flex', gap: 8}}>{c.driverId === user.parentId && c.passengers.length > 0 && <button style={styles.btnPrimary} onClick={() => setShowDriverView(c.id)}>Manage Route</button>}{c.passengers.length < c.seats && c.driverId !== user.parentId && <button style={styles.btnLink} onClick={() => requestRide(c.id)}>Request</button>}</div></div>{c.passengers.length > 0 && <p style={styles.passengers}>Passengers: {c.passengers.map(p => typeof p === 'string' ? p : p.playerName).join(', ')}</p>}</div>))}</div>
           {event.needsSnacks && (<div style={styles.card}><h3 style={{...styles.cardTitle, marginBottom: 16}}>🍪 Volunteer Duties</h3>{duties.map(d => (<div key={d.id} style={styles.listItem}><div style={styles.listItemHeader}><div style={{display: 'flex', alignItems: 'center', gap: 12}}><span style={{fontSize: 24}}>{d.type === 'snacks' ? '🍎' : '🧃'}</span><div><div style={styles.itemTitle}>{d.type.charAt(0).toUpperCase() + d.type.slice(1)}</div>{d.assignedTo ? <div style={{...styles.itemSubtitle, color: '#16a34a'}}>✓ {d.assignedTo}</div> : <div style={{...styles.itemSubtitle, color: '#ca8a04'}}>Needs volunteer</div>}</div></div>{!d.assignedTo && <button style={styles.btnPurple} onClick={() => volunteer(d.id)}>Sign Up</button>}</div></div>))}</div>)}
         </div>
         <div style={styles.bottomNav}>{[{id:'home',icon:'🏠',label:'Home'},{id:'schedule',icon:'📅',label:'Schedule'},{id:'carpools',icon:'🚗',label:'Carpools'},{id:'chat',icon:'💬',label:'Chats'},{id:'roster',icon:'👥',label:'Roster'}].map(i => (<button key={i.id} onClick={() => { setTab(i.id); setSelectedEvent(null); }} style={{...styles.navItem, color: tab === i.id ? '#16a34a' : '#9ca3af'}}><span style={styles.navIcon}>{i.icon}</span><span style={styles.navLabel}>{i.label}</span></button>))}</div>
@@ -800,4 +1113,23 @@ const styles = {
   selectedLocationEdit: { background: 'none', border: 'none', color: '#16a34a', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
   locationErrorText: { color: '#dc2626', fontSize: 12, marginTop: 4 },
   mapLink: { color: '#16a34a', fontSize: 12, fontWeight: 500, marginLeft: 4 },
+  // Carpool Driver View Styles
+  routeCard: { background: 'white', borderRadius: 16, padding: 32, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+  routeIcon: { fontSize: 48, marginBottom: 16 },
+  driverRouteCard: { background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', borderRadius: 16, padding: 24, color: 'white', textAlign: 'center', marginBottom: 24, marginTop: 24 },
+  departureLabel: { fontSize: 14, opacity: 0.9, marginBottom: 8 },
+  departureTime: { fontSize: 36, fontWeight: 700 },
+  departureNote: { fontSize: 14, opacity: 0.8, marginTop: 8 },
+  pickupList: { marginBottom: 24 },
+  pickupItem: { display: 'flex', alignItems: 'flex-start', gap: 12, background: 'white', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+  pickupNumber: { width: 32, height: 32, borderRadius: '50%', background: '#16a34a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0, fontSize: 14 },
+  pickupInfo: { flex: 1 },
+  pickupPlayerName: { fontWeight: 600, color: '#1f2937', fontSize: 16 },
+  pickupAddress: { fontSize: 13, color: '#6b7280', marginTop: 4 },
+  btnStartTrip: { width: '100%', padding: 16, fontSize: 16, fontWeight: 600, background: '#16a34a', color: 'white', border: 'none', borderRadius: 12, cursor: 'pointer' },
+  btnSecondary: { padding: 16, fontSize: 16, fontWeight: 600, background: 'white', color: '#16a34a', border: '2px solid #16a34a', borderRadius: 12, cursor: 'pointer' },
+  tripActiveCard: { background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 12, padding: 20, textAlign: 'center' },
+  tripActiveIcon: { fontSize: 32, marginBottom: 8, color: '#16a34a' },
+  tripActiveText: { fontSize: 16, fontWeight: 600, color: '#166534' },
+  tripStartedAt: { fontSize: 13, color: '#6b7280', marginTop: 4 },
 };
