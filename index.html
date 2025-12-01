@@ -1,13 +1,974 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚽%3C/text%3E%3C/svg%3E" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TeamKick - Youth Soccer Coordination</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚽%3C/text%3E%3C/svg%3E" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TeamKick - Youth Soccer Coordination</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React and ReactDOM from CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel Standalone for JSX transpiling -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- App Code -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Google Maps API Key - Replace with your own key
+    const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+
+    // Load Google Maps Script
+    const loadGoogleMapsScript = () => {
+      return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps) {
+          resolve(window.google);
+          return;
+        }
+        const existingScript = document.getElementById('google-maps-script');
+        if (existingScript) {
+          existingScript.addEventListener('load', () => resolve(window.google));
+          return;
+        }
+        const script = document.createElement('script');
+        script.id = 'google-maps-script';
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve(window.google);
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
+
+    // OpenRouteService API Key - Get free key at openrouteservice.org
+    const ORS_API_KEY = 'YOUR_OPENROUTESERVICE_API_KEY';
+
+    // OpenRouteService Routing Functions
+    const RoutingService = {
+      // Optimize route for multiple pickups using TSP solver
+      async optimizeRoute(driverCoords, passengerCoords, destinationCoords) {
+        try {
+          const jobs = passengerCoords.map((p, i) => ({
+            id: i + 1,
+            location: [p.lng, p.lat],
+            service: 120, // 2 minutes pickup time
+            delivery: [1]
+          }));
+
+          const vehicles = [{
+            id: 1,
+            profile: 'driving-car',
+            start: [driverCoords.lng, driverCoords.lat],
+            end: [destinationCoords.lng, destinationCoords.lat],
+            capacity: [passengerCoords.length + 1]
+          }];
+
+          const response = await fetch('https://api.openrouteservice.org/optimization', {
+            method: 'POST',
+            headers: {
+              'Authorization': ORS_API_KEY,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ jobs, vehicles })
+          });
+
+          if (!response.ok) throw new Error('Route optimization failed');
+          return await response.json();
+        } catch (err) {
+          console.error('Routing error:', err);
+          return null;
+        }
+      },
+
+      // Get directions with turn-by-turn instructions
+      async getDirections(coordinates) {
+        try {
+          const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+            method: 'POST',
+            headers: {
+              'Authorization': ORS_API_KEY,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              coordinates,
+              instructions: true,
+              geometry: true
+            })
+          });
+
+          if (!response.ok) throw new Error('Directions request failed');
+          return await response.json();
+        } catch (err) {
+          console.error('Directions error:', err);
+          return null;
+        }
+      }
+    };
+
+    // Helper function to format distance in meters to readable format
+    const formatDistance = (meters) => {
+      if (meters < 1000) return `${Math.round(meters)}m`;
+      return `${(meters / 1000).toFixed(1)}km`;
+    };
+
+    // Helper function to format duration in seconds to readable format
+    const formatDuration = (seconds) => {
+      const minutes = Math.round(seconds / 60);
+      if (minutes < 60) return `${minutes} min`;
+      const hours = Math.floor(minutes / 60);
+      const remainingMins = minutes % 60;
+      return `${hours}h ${remainingMins}m`;
+    };
+
+    // Calculate pickup times based on route duration
+    const calculatePickupTimes = (departureTime, routeSegments) => {
+      const times = [];
+      let accumulatedSeconds = 0;
+
+      routeSegments.forEach((segment, idx) => {
+        accumulatedSeconds += segment.duration;
+        const pickupTime = new Date(departureTime.getTime() + accumulatedSeconds * 1000);
+        times.push({
+          index: idx,
+          eta: pickupTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          etaDate: pickupTime
+        });
+      });
+
+      return times;
+    };
+
+    // Calculate suggested departure time based on event arrival time
+    const calculateDepartureTime = (arriveByStr, totalDurationSeconds) => {
+      // Parse arriveBy time (e.g., "9:15 AM")
+      const [time, period] = arriveByStr.split(' ');
+      const [hours, mins] = time.split(':').map(Number);
+
+      const arriveDate = new Date();
+      let arriveHours = hours;
+      if (period === 'PM' && hours !== 12) arriveHours += 12;
+      if (period === 'AM' && hours === 12) arriveHours = 0;
+      arriveDate.setHours(arriveHours, mins, 0, 0);
+
+      // Subtract total duration plus 5 minute buffer
+      const departTime = new Date(arriveDate.getTime() - (totalDurationSeconds + 300) * 1000);
+      return departTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    // Location Search Component with Google Places Autocomplete
+    const LocationSearchInput = ({ value, onChange, onPlaceSelected, placeholder, inputStyle }) => {
+      const inputRef = useRef(null);
+      const autocompleteRef = useRef(null);
+
+      useEffect(() => {
+        loadGoogleMapsScript()
+          .then(() => {
+            if (inputRef.current && window.google) {
+              autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
+                types: ['establishment', 'geocode'],
+                fields: ['formatted_address', 'geometry', 'name', 'place_id']
+              });
+              autocompleteRef.current.addListener('place_changed', () => {
+                const place = autocompleteRef.current.getPlace();
+                if (place && place.geometry) {
+                  onPlaceSelected({
+                    name: place.name || place.formatted_address,
+                    address: place.formatted_address,
+                    placeId: place.place_id,
+                    lat: place.geometry.location.lat(),
+                    lng: place.geometry.location.lng()
+                  });
+                }
+              });
+            }
+          })
+          .catch(err => console.error('Failed to load Google Maps:', err));
+      }, []);
+
+      return (
+        <input
+          ref={inputRef}
+          type="text"
+          style={inputStyle}
+          placeholder={placeholder || "Search for a location..."}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      );
+    };
+
+    // Location Confirmation Modal with Map Preview
+    const LocationConfirmModal = ({ location, onConfirm, onCancel, onEdit }) => {
+      const mapRef = useRef(null);
+      const mapInstanceRef = useRef(null);
+      const markerRef = useRef(null);
+
+      useEffect(() => {
+        if (location && location.lat && location.lng && mapRef.current) {
+          loadGoogleMapsScript().then(() => {
+            const position = { lat: location.lat, lng: location.lng };
+            mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+              center: position,
+              zoom: 15,
+              mapTypeControl: false,
+              streetViewControl: false,
+              fullscreenControl: false
+            });
+            markerRef.current = new window.google.maps.Marker({
+              position: position,
+              map: mapInstanceRef.current,
+              title: location.name
+            });
+          });
+        }
+      }, [location]);
+
+      const openInGoogleMaps = () => {
+        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.address)}&query_place_id=${location.placeId}`;
+        window.open(url, '_blank');
+      };
+
+      return (
+        <div style={locationConfirmStyles.modal}>
+          <div style={locationConfirmStyles.modalContent}>
+            <div style={locationConfirmStyles.modalHeader}>
+              <h3 style={locationConfirmStyles.modalTitle}>Confirm Location</h3>
+              <button style={locationConfirmStyles.modalClose} onClick={onCancel}>✕</button>
+            </div>
+
+            <div style={locationConfirmStyles.locationConfirmBox}>
+              <div style={locationConfirmStyles.locationIcon}>📍</div>
+              <div style={locationConfirmStyles.locationDetails}>
+                <div style={locationConfirmStyles.locationName}>{location?.name}</div>
+                <div style={locationConfirmStyles.locationAddress}>{location?.address}</div>
+              </div>
+            </div>
+
+            <div ref={mapRef} style={locationConfirmStyles.mapPreview}></div>
+
+            <button style={locationConfirmStyles.viewOnMapsBtn} onClick={openInGoogleMaps}>
+              🗺️ View on Google Maps
+            </button>
+
+            <div style={locationConfirmStyles.locationConfirmText}>
+              Is this the correct location?
+            </div>
+
+            <div style={locationConfirmStyles.locationConfirmButtons}>
+              <button style={locationConfirmStyles.btnOutlineMedium} onClick={onEdit}>
+                Change Location
+              </button>
+              <button style={locationConfirmStyles.btnPrimaryMedium} onClick={onConfirm}>
+                Confirm Location
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Styles for location confirmation modal
+    const locationConfirmStyles = {
+      modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 },
+      modalContent: { background: 'white', borderRadius: 16, padding: 24, width: '90%', maxWidth: 400, maxHeight: '90vh', overflowY: 'auto' },
+      modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+      modalTitle: { fontSize: 20, fontWeight: 700, color: '#1f2937', margin: 0 },
+      modalClose: { background: '#f3f4f6', border: 'none', borderRadius: 20, width: 32, height: 32, cursor: 'pointer', fontSize: 16 },
+      locationConfirmBox: { display: 'flex', alignItems: 'flex-start', gap: 12, background: '#f0fdf4', borderRadius: 12, padding: 16, marginBottom: 16 },
+      locationIcon: { fontSize: 24 },
+      locationDetails: { flex: 1 },
+      locationName: { fontWeight: 600, color: '#1f2937', fontSize: 16 },
+      locationAddress: { color: '#6b7280', fontSize: 14, marginTop: 4 },
+      mapPreview: { width: '100%', height: 200, borderRadius: 12, marginBottom: 16, background: '#e5e7eb' },
+      viewOnMapsBtn: { width: '100%', padding: '12px', fontSize: 14, fontWeight: 500, background: '#f3f4f6', color: '#1f2937', border: 'none', borderRadius: 10, cursor: 'pointer', marginBottom: 16 },
+      locationConfirmText: { textAlign: 'center', color: '#6b7280', fontSize: 14, marginBottom: 16 },
+      locationConfirmButtons: { display: 'flex', gap: 12 },
+      btnOutlineMedium: { flex: 1, padding: '12px', fontSize: 14, fontWeight: 600, background: 'white', color: '#16a34a', border: '2px solid #16a34a', borderRadius: 10, cursor: 'pointer' },
+      btnPrimaryMedium: { flex: 1, padding: '12px', fontSize: 14, fontWeight: 600, background: '#16a34a', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer' }
+    };
+
+    // ==================== IN-MEMORY DATABASE (No external calls) ====================
+    const createInitialDB = () => ({
+      users: [
+        { id: 'coach-1', email: 'coach@teamkick.com', password: 'password123', name: 'Coach Mike', isCoach: true, teamId: 'team-1' }
+      ],
+      teams: [
+        { id: 'team-1', name: 'Cary Lightning', code: 'LIGHT-2025', ageGroup: 'U10', coachId: 'coach-1' }
+      ],
+      players: [
+        { id: 'player-1', name: 'Emma Wilson', parentId: 'parent-1', teamId: 'team-1', jersey: 7 },
+        { id: 'player-2', name: 'Liam Chen', parentId: 'parent-2', teamId: 'team-1', jersey: 10 },
+        { id: 'player-3', name: 'Olivia Martinez', parentId: 'parent-3', teamId: 'team-1', jersey: 3 },
+        { id: 'player-4', name: 'Noah Johnson', parentId: 'parent-4', teamId: 'team-1', jersey: 5 },
+        { id: 'player-5', name: 'Ava Thompson', parentId: 'parent-5', teamId: 'team-1', jersey: 11 },
+        { id: 'player-6', name: 'Mason Davis', parentId: 'parent-6', teamId: 'team-1', jersey: 9 },
+      ],
+      parents: [
+        { id: 'parent-1', name: 'Sarah Wilson', email: 'sarah@email.com', canDrive: true, seats: 3, teamId: 'team-1', address: '123 Oak Street', addressFull: '123 Oak Street, Cary, NC 27513', addressLat: 35.7915, addressLng: -78.7811, addressPlaceId: 'ChIJ1' },
+        { id: 'parent-2', name: 'David Chen', email: 'david@email.com', canDrive: true, seats: 4, teamId: 'team-1', address: '456 Pine Avenue', addressFull: '456 Pine Avenue, Cary, NC 27518', addressLat: 35.8205, addressLng: -78.7691, addressPlaceId: 'ChIJ2' },
+        { id: 'parent-3', name: 'Maria Martinez', email: 'maria@email.com', canDrive: true, seats: 2, teamId: 'team-1', address: '789 Maple Drive', addressFull: '789 Maple Drive, Cary, NC 27519', addressLat: 35.8105, addressLng: -78.7901, addressPlaceId: 'ChIJ3' },
+        { id: 'parent-4', name: 'Mike Johnson', email: 'mike@email.com', canDrive: false, seats: 0, teamId: 'team-1', address: '321 Elm Court', addressFull: '321 Elm Court, Cary, NC 27511', addressLat: 35.7805, addressLng: -78.7601, addressPlaceId: 'ChIJ4' },
+        { id: 'parent-5', name: 'Jen Thompson', email: 'jen@email.com', canDrive: true, seats: 3, teamId: 'team-1', address: '654 Birch Lane', addressFull: '654 Birch Lane, Cary, NC 27513', addressLat: 35.7955, addressLng: -78.7731, addressPlaceId: 'ChIJ5' },
+        { id: 'parent-6', name: 'Chris Davis', email: 'chris@email.com', canDrive: true, seats: 4, teamId: 'team-1', address: '987 Cedar Way', addressFull: '987 Cedar Way, Cary, NC 27519', addressLat: 35.8155, addressLng: -78.7851, addressPlaceId: 'ChIJ6' },
+      ],
+      events: [],
+      carpools: [],
+      messages: []
+    });
+
+    let DB = createInitialDB();
+
+    // ==================== MAIN APP ====================
+    function App() {
+      const [currentUser, setCurrentUser] = useState(null);
+      const [screen, setScreen] = useState('login');
+      const [selectedEvent, setSelectedEvent] = useState(null);
+      const [showModal, setShowModal] = useState(null);
+      const [newEvent, setNewEvent] = useState({ title: '', date: '', time: '', location: '', type: 'practice' });
+      const [selectedPlayers, setSelectedPlayers] = useState([]);
+      const [chatMessages, setChatMessages] = useState([]);
+      const [messageInput, setMessageInput] = useState('');
+      const [selectedChat, setSelectedChat] = useState(null);
+
+      // Location states for event creation
+      const [locationSearch, setLocationSearch] = useState('');
+      const [selectedLocation, setSelectedLocation] = useState(null);
+      const [showLocationConfirm, setShowLocationConfirm] = useState(false);
+      const [pendingLocation, setPendingLocation] = useState(null);
+
+      const teamData = currentUser ? DB.teams.find(t => t.id === currentUser.teamId) : null;
+      const teamPlayers = currentUser ? DB.players.filter(p => p.teamId === currentUser.teamId) : [];
+      const teamParents = currentUser ? DB.parents.filter(p => p.teamId === currentUser.teamId) : [];
+      const teamEvents = currentUser ? DB.events.filter(e => e.teamId === currentUser.teamId) : [];
+      const upcomingEvents = teamEvents.filter(e => new Date(e.date) >= new Date()).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+      const login = (email, password) => {
+        const user = DB.users.find(u => u.email === email && u.password === password);
+        if (user) {
+          setCurrentUser(user);
+          setScreen('home');
+          return true;
+        }
+        return false;
+      };
+
+      const logout = () => {
+        setCurrentUser(null);
+        setScreen('login');
+      };
+
+      const createEvent = () => {
+        if (!newEvent.title || !newEvent.date || !newEvent.time || !selectedLocation) return;
+
+        const event = {
+          id: `event-${Date.now()}`,
+          ...newEvent,
+          location: selectedLocation.name,
+          locationFull: selectedLocation.address,
+          locationLat: selectedLocation.lat,
+          locationLng: selectedLocation.lng,
+          locationPlaceId: selectedLocation.placeId,
+          teamId: currentUser.teamId,
+          createdBy: currentUser.id
+        };
+        DB.events.push(event);
+        setShowModal(null);
+        setNewEvent({ title: '', date: '', time: '', location: '', type: 'practice' });
+        setSelectedLocation(null);
+        setLocationSearch('');
+      };
+
+      const addPlayerToRoster = (playerId) => {
+        if (selectedPlayers.includes(playerId)) {
+          setSelectedPlayers(selectedPlayers.filter(id => id !== playerId));
+        } else {
+          setSelectedPlayers([...selectedPlayers, playerId]);
+        }
+      };
+
+      const handleLocationSelected = (location) => {
+        setPendingLocation(location);
+        setShowLocationConfirm(true);
+      };
+
+      const confirmLocation = () => {
+        setSelectedLocation(pendingLocation);
+        setLocationSearch(pendingLocation.name);
+        setShowLocationConfirm(false);
+      };
+
+      const editLocation = () => {
+        setShowLocationConfirm(false);
+        setPendingLocation(null);
+      };
+
+      const cancelLocationConfirm = () => {
+        setShowLocationConfirm(false);
+        setPendingLocation(null);
+      };
+
+      // ==================== STYLES ====================
+      const styles = {
+        input: { width: '100%', padding: '12px 16px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 15, outline: 'none', marginBottom: 12 },
+        select: { width: '100%', padding: '12px 16px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 15, outline: 'none', marginBottom: 12 },
+        checkboxRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' },
+        teamCodeHint: { fontSize: 12, color: '#6b7280', marginTop: 8 },
+        app: { minHeight: '100vh', maxWidth: 430, margin: '0 auto', background: '#f9fafb', fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif", position: 'relative', paddingBottom: 80, boxShadow: '0 0 40px rgba(0,0,0,0.1)' },
+        header: { background: 'white', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 100 },
+        logo: { fontSize: 24, fontWeight: 700, color: '#16a34a' },
+        headerRight: { fontSize: 20, cursor: 'pointer' },
+        coachBadge: { background: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600 },
+        content: { padding: 20 },
+        heroCard: { background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', borderRadius: 16, padding: 20, color: 'white', marginBottom: 24 },
+        coachHero: { background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%)', borderRadius: 16, padding: 20, color: 'white', marginBottom: 24 },
+        heroTitle: { fontSize: 20, fontWeight: 600, margin: 0 },
+        heroSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 4 },
+        statsRow: { display: 'flex', gap: 12, marginTop: 16 },
+        statBox: { background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '10px 16px' },
+        statNumber: { fontSize: 24, fontWeight: 700 },
+        statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.8)' },
+        sectionTitle: { fontSize: 18, fontWeight: 600, color: '#374151', marginBottom: 16 },
+        pageTitle: { fontSize: 24, fontWeight: 700, color: '#1f2937', marginBottom: 16 },
+        pageHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+        quickActions: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 },
+        quickActionBtn: { background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontSize: 12, color: '#374151', fontWeight: 500 },
+        quickActionIcon: { fontSize: 24 },
+        eventCard: { background: 'white', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', cursor: 'pointer' },
+        eventRow: { display: 'flex', alignItems: 'center', gap: 12 },
+        eventIcon: { width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 },
+        eventInfo: { flex: 1 },
+        eventTitle: { fontWeight: 500, color: '#1f2937' },
+        eventMeta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+        chevron: { fontSize: 24, color: '#9ca3af' },
+        backBtn: { background: 'none', border: 'none', color: '#16a34a', fontWeight: 500, cursor: 'pointer', fontSize: 15, padding: 0, marginBottom: 16 },
+        eventHero: { borderRadius: 16, padding: 20, marginBottom: 20 },
+        eventTypeRow: { display: 'flex', alignItems: 'center', gap: 8 },
+        typeBadge: { fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 6 },
+        typeBadgeSmall: { fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4, display: 'inline-block' },
+        eventHeroTitle: { fontSize: 22, fontWeight: 700, color: '#1f2937', marginTop: 12 },
+        eventDetails: { marginTop: 16 },
+        detailRow: { color: '#4b5563', marginBottom: 8, fontSize: 14 },
+        card: { background: 'white', borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+        cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+        cardTitle: { fontSize: 16, fontWeight: 600, color: '#374151', margin: 0 },
+        btnPrimary: { background: '#16a34a', color: 'white', border: 'none', borderRadius: 8, fontWeight: 500, cursor: 'pointer', fontSize: 13, padding: '8px 14px' },
+        btnPurple: { background: '#7c3aed', color: 'white', border: 'none', borderRadius: 8, fontWeight: 500, cursor: 'pointer', fontSize: 13, padding: '8px 14px' },
+        btnLink: { background: 'none', border: 'none', color: '#16a34a', fontWeight: 500, cursor: 'pointer', fontSize: 14 },
+        listItem: { background: '#f9fafb', borderRadius: 10, padding: 12, marginBottom: 8 },
+        listItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+        driverName: { fontWeight: 500, color: '#1f2937' },
+        itemTitle: { fontWeight: 500, color: '#1f2937' },
+        itemSubtitle: { fontSize: 13, color: '#6b7280' },
+        passengers: { fontSize: 13, color: '#6b7280', marginTop: 8 },
+        scheduleCard: { background: 'white', borderRadius: 12, padding: 16, marginBottom: 12, display: 'flex', gap: 16, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+        dateBox: { textAlign: 'center', minWidth: 50 },
+        dateMonth: { fontSize: 11, color: '#6b7280' },
+        dateDay: { fontSize: 26, fontWeight: 700, color: '#1f2937' },
+        rosterCard: { background: 'white', borderRadius: 12, padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+        rosterCardCoach: { background: 'white', borderRadius: 12, padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+        jerseyBadge: { width: 48, height: 48, background: '#dbeafe', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: '#1d4ed8' },
+        playerAvatar: { width: 48, height: 48, background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 },
+        playerInfo: { flex: 1 },
+        playerName: { fontWeight: 500, color: '#1f2937' },
+        parentName: { fontSize: 13, color: '#6b7280' },
+        playerContact: { fontSize: 12, color: '#9ca3af' },
+        driverBadge: { fontSize: 11, background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: 20 },
+        removeBtn: { background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16 },
+        emptyText: { fontSize: 14, color: '#9ca3af' },
+        emptyChat: { textAlign: 'center', padding: 40, color: '#9ca3af' },
+        chatList: { display: 'flex', flexDirection: 'column', gap: 12 },
+        chatListItem: { background: 'white', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+        chatListIcon: { width: 48, height: 48, background: '#f3f4f6', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 },
+        chatListInfo: { flex: 1 },
+        chatListName: { fontWeight: 500, color: '#1f2937' },
+        chatListPreview: { fontSize: 13, color: '#6b7280' },
+        chatListBadge: { background: '#16a34a', color: 'white', fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 10 },
+        chatContainer: { minHeight: '100vh', maxWidth: 430, margin: '0 auto', background: '#f9fafb', fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif", display: 'flex', flexDirection: 'column', boxShadow: '0 0 40px rgba(0,0,0,0.1)' },
+        chatHeader: { background: 'white', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 12 },
+        chatHeaderInfo: { flex: 1 },
+        chatHeaderTitle: { fontWeight: 600, color: '#1f2937' },
+        chatHeaderSub: { fontSize: 12, color: '#6b7280' },
+        chatMessages: { flex: 1, padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 },
+        messageWrapper: { display: 'flex' },
+        messageBubble: { maxWidth: '75%', padding: 12, borderRadius: 16 },
+        myMessage: { background: '#16a34a', color: 'white', borderBottomRightRadius: 4 },
+        otherMessage: { background: 'white', color: '#1f2937', borderBottomLeftRadius: 4 },
+        messageSender: { fontSize: 12, fontWeight: 600, marginBottom: 4 },
+        messageText: { fontSize: 15, lineHeight: 1.4 },
+        messageTime: { fontSize: 11, opacity: 0.7, marginTop: 4, textAlign: 'right' },
+        chatInput: { background: 'white', padding: 16, borderTop: '1px solid #e5e7eb', display: 'flex', gap: 12 },
+        chatInputField: { flex: 1, padding: '12px 16px', border: '1px solid #e5e7eb', borderRadius: 24, outline: 'none', fontSize: 15 },
+        chatSendBtn: { background: '#16a34a', color: 'white', border: 'none', borderRadius: 24, padding: '12px 20px', fontWeight: 600, cursor: 'pointer' },
+        modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 },
+        modalContent: { background: 'white', borderRadius: '24px 24px 0 0', padding: 24, width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto' },
+        modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+        modalTitle: { fontSize: 20, fontWeight: 700, color: '#1f2937', margin: 0 },
+        modalClose: { background: '#f3f4f6', border: 'none', borderRadius: 20, width: 32, height: 32, cursor: 'pointer', fontSize: 16 },
+        bottomNav: { position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: 'white', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: 100 },
+        navItem: { background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '4px 12px' },
+        navIcon: { fontSize: 22 },
+        navLabel: { fontSize: 11, fontWeight: 500 },
+        selectedLocationBox: { display: 'flex', alignItems: 'center', gap: 10, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 12, marginTop: 8 },
+        selectedLocationIcon: { color: '#16a34a', fontSize: 18, fontWeight: 700 },
+        selectedLocationText: { flex: 1 },
+        selectedLocationName: { fontWeight: 600, color: '#166534', fontSize: 14 },
+        selectedLocationAddress: { fontSize: 12, color: '#15803d', marginTop: 2 },
+        selectedLocationEdit: { background: 'none', border: 'none', color: '#16a34a', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
+      };
+
+      // ==================== LOGIN SCREEN ====================
+      if (screen === 'login') {
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+
+        return (
+          <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: 'white', borderRadius: 20, padding: 32, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+              <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                <div style={{ fontSize: 42 }}>⚽</div>
+                <h1 style={{ fontSize: 28, fontWeight: 700, color: '#16a34a', margin: '16px 0 8px' }}>TeamKick</h1>
+                <p style={{ color: '#6b7280', fontSize: 14 }}>Youth Soccer Coordination</p>
+              </div>
+
+              <input
+                type="email"
+                placeholder="Email"
+                style={styles.input}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                style={styles.input}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+
+              {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+              <button
+                onClick={() => {
+                  if (login(email, password)) {
+                    setError('');
+                  } else {
+                    setError('Invalid credentials. Try coach@teamkick.com / password123');
+                  }
+                }}
+                style={{ width: '100%', padding: 14, background: '#16a34a', color: 'white', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 15, cursor: 'pointer', marginBottom: 12 }}
+              >
+                Sign In
+              </button>
+
+              <div style={{ textAlign: 'center', marginTop: 20 }}>
+                <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>Demo Account:</p>
+                <p style={{ fontSize: 12, color: '#9ca3af' }}>coach@teamkick.com / password123</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ==================== HOME SCREEN ====================
+      if (screen === 'home') {
+        return (
+          <div style={styles.app}>
+            {/* Header */}
+            <div style={styles.header}>
+              <div style={styles.logo}>TeamKick</div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {currentUser.isCoach && <div style={styles.coachBadge}>COACH</div>}
+                <div style={styles.headerRight} onClick={logout}>👤</div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div style={styles.content}>
+              {/* Hero Card */}
+              <div style={currentUser.isCoach ? styles.coachHero : styles.heroCard}>
+                <h2 style={styles.heroTitle}>{teamData?.name}</h2>
+                <div style={styles.heroSubtitle}>{teamData?.ageGroup} • {currentUser.name}</div>
+                <div style={styles.statsRow}>
+                  <div style={styles.statBox}>
+                    <div style={styles.statNumber}>{teamPlayers.length}</div>
+                    <div style={styles.statLabel}>PLAYERS</div>
+                  </div>
+                  <div style={styles.statBox}>
+                    <div style={styles.statNumber}>{upcomingEvents.length}</div>
+                    <div style={styles.statLabel}>UPCOMING</div>
+                  </div>
+                  <div style={styles.statBox}>
+                    <div style={styles.statNumber}>{teamParents.filter(p => p.canDrive).length}</div>
+                    <div style={styles.statLabel}>DRIVERS</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              {currentUser.isCoach && (
+                <div style={styles.quickActions}>
+                  <button style={styles.quickActionBtn} onClick={() => setShowModal('newEvent')}>
+                    <div style={styles.quickActionIcon}>📅</div>
+                    New Event
+                  </button>
+                  <button style={styles.quickActionBtn} onClick={() => setShowModal('newCarpool')}>
+                    <div style={styles.quickActionIcon}>🚗</div>
+                    Carpool
+                  </button>
+                  <button style={styles.quickActionBtn} onClick={() => setScreen('roster')}>
+                    <div style={styles.quickActionIcon}>👥</div>
+                    Roster
+                  </button>
+                  <button style={styles.quickActionBtn}>
+                    <div style={styles.quickActionIcon}>📊</div>
+                    Stats
+                  </button>
+                </div>
+              )}
+
+              {/* Upcoming Events */}
+              <div style={styles.sectionTitle}>Upcoming Events</div>
+              {upcomingEvents.length === 0 ? (
+                <div style={styles.emptyText}>No upcoming events</div>
+              ) : (
+                upcomingEvents.map((event) => (
+                  <div key={event.id} style={styles.eventCard} onClick={() => { setSelectedEvent(event); setScreen('eventDetail'); }}>
+                    <div style={styles.eventRow}>
+                      <div style={{ ...styles.eventIcon, background: event.type === 'game' ? '#fef3c7' : event.type === 'practice' ? '#dbeafe' : '#f3e8ff' }}>
+                        {event.type === 'game' ? '🏆' : event.type === 'practice' ? '⚽' : '🎉'}
+                      </div>
+                      <div style={styles.eventInfo}>
+                        <div style={styles.eventTitle}>{event.title}</div>
+                        <div style={styles.eventMeta}>{event.date} at {event.time}</div>
+                      </div>
+                      <div style={styles.chevron}>›</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Bottom Navigation */}
+            <div style={styles.bottomNav}>
+              <button style={styles.navItem} onClick={() => setScreen('home')}>
+                <div style={{ ...styles.navIcon, color: '#16a34a' }}>🏠</div>
+                <div style={{ ...styles.navLabel, color: '#16a34a' }}>Home</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('schedule')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>📅</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Schedule</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('roster')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>👥</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Roster</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('chat')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>💬</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Chat</div>
+              </button>
+            </div>
+
+            {/* New Event Modal */}
+            {showModal === 'newEvent' && (
+              <div style={styles.modal} onClick={() => setShowModal(null)}>
+                <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                  <div style={styles.modalHeader}>
+                    <h3 style={styles.modalTitle}>Create Event</h3>
+                    <button style={styles.modalClose} onClick={() => setShowModal(null)}>✕</button>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Event Title"
+                    style={styles.input}
+                    value={newEvent.title}
+                    onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                  />
+
+                  <select
+                    style={styles.select}
+                    value={newEvent.type}
+                    onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value })}
+                  >
+                    <option value="practice">Practice</option>
+                    <option value="game">Game</option>
+                    <option value="tournament">Tournament</option>
+                  </select>
+
+                  <input
+                    type="date"
+                    style={styles.input}
+                    value={newEvent.date}
+                    onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                  />
+
+                  <input
+                    type="time"
+                    style={styles.input}
+                    value={newEvent.time}
+                    onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
+                  />
+
+                  <LocationSearchInput
+                    value={locationSearch}
+                    onChange={setLocationSearch}
+                    onPlaceSelected={handleLocationSelected}
+                    placeholder="Search for location..."
+                    inputStyle={styles.input}
+                  />
+
+                  {selectedLocation && (
+                    <div style={styles.selectedLocationBox}>
+                      <div style={styles.selectedLocationIcon}>✓</div>
+                      <div style={styles.selectedLocationText}>
+                        <div style={styles.selectedLocationName}>{selectedLocation.name}</div>
+                        <div style={styles.selectedLocationAddress}>{selectedLocation.address}</div>
+                      </div>
+                      <button style={styles.selectedLocationEdit} onClick={() => {
+                        setSelectedLocation(null);
+                        setLocationSearch('');
+                      }}>
+                        Change
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    style={{ ...styles.btnPrimary, width: '100%', padding: 14, fontSize: 15 }}
+                    onClick={createEvent}
+                  >
+                    Create Event
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Location Confirmation Modal */}
+            {showLocationConfirm && pendingLocation && (
+              <LocationConfirmModal
+                location={pendingLocation}
+                onConfirm={confirmLocation}
+                onCancel={cancelLocationConfirm}
+                onEdit={editLocation}
+              />
+            )}
+          </div>
+        );
+      }
+
+      // ==================== SCHEDULE SCREEN ====================
+      if (screen === 'schedule') {
+        return (
+          <div style={styles.app}>
+            <div style={styles.header}>
+              <div style={styles.logo}>TeamKick</div>
+              <div style={styles.headerRight} onClick={logout}>👤</div>
+            </div>
+
+            <div style={styles.content}>
+              <div style={styles.pageTitle}>Schedule</div>
+              {upcomingEvents.length === 0 ? (
+                <div style={styles.emptyText}>No upcoming events</div>
+              ) : (
+                upcomingEvents.map((event) => (
+                  <div key={event.id} style={styles.scheduleCard} onClick={() => { setSelectedEvent(event); setScreen('eventDetail'); }}>
+                    <div style={styles.dateBox}>
+                      <div style={styles.dateMonth}>{new Date(event.date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                      <div style={styles.dateDay}>{new Date(event.date).getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={styles.eventTitle}>{event.title}</div>
+                      <div style={styles.eventMeta}>{event.time} • {event.location}</div>
+                      <span style={{ ...styles.typeBadgeSmall, background: event.type === 'game' ? '#fef3c7' : '#dbeafe', color: event.type === 'game' ? '#b45309' : '#1e40af' }}>
+                        {event.type.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={styles.bottomNav}>
+              <button style={styles.navItem} onClick={() => setScreen('home')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>🏠</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Home</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('schedule')}>
+                <div style={{ ...styles.navIcon, color: '#16a34a' }}>📅</div>
+                <div style={{ ...styles.navLabel, color: '#16a34a' }}>Schedule</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('roster')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>👥</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Roster</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('chat')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>💬</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Chat</div>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // ==================== ROSTER SCREEN ====================
+      if (screen === 'roster') {
+        return (
+          <div style={styles.app}>
+            <div style={styles.header}>
+              <div style={styles.logo}>TeamKick</div>
+              <div style={styles.headerRight} onClick={logout}>👤</div>
+            </div>
+
+            <div style={styles.content}>
+              <div style={styles.pageTitle}>Team Roster</div>
+              {teamPlayers.map((player) => {
+                const parent = teamParents.find(p => p.id === player.parentId);
+                return (
+                  <div key={player.id} style={styles.rosterCard}>
+                    <div style={styles.jerseyBadge}>#{player.jersey}</div>
+                    <div style={styles.playerInfo}>
+                      <div style={styles.playerName}>{player.name}</div>
+                      <div style={styles.parentName}>{parent?.name}</div>
+                      {parent?.canDrive && <div style={styles.driverBadge}>Driver</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={styles.bottomNav}>
+              <button style={styles.navItem} onClick={() => setScreen('home')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>🏠</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Home</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('schedule')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>📅</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Schedule</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('roster')}>
+                <div style={{ ...styles.navIcon, color: '#16a34a' }}>👥</div>
+                <div style={{ ...styles.navLabel, color: '#16a34a' }}>Roster</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('chat')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>💬</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Chat</div>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // ==================== CHAT SCREEN ====================
+      if (screen === 'chat') {
+        return (
+          <div style={styles.app}>
+            <div style={styles.header}>
+              <div style={styles.logo}>TeamKick</div>
+              <div style={styles.headerRight} onClick={logout}>👤</div>
+            </div>
+
+            <div style={styles.content}>
+              <div style={styles.pageTitle}>Team Chat</div>
+              <div style={styles.emptyChat}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
+                <div>No messages yet</div>
+              </div>
+            </div>
+
+            <div style={styles.bottomNav}>
+              <button style={styles.navItem} onClick={() => setScreen('home')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>🏠</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Home</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('schedule')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>📅</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Schedule</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('roster')}>
+                <div style={{ ...styles.navIcon, color: '#6b7280' }}>👥</div>
+                <div style={{ ...styles.navLabel, color: '#6b7280' }}>Roster</div>
+              </button>
+              <button style={styles.navItem} onClick={() => setScreen('chat')}>
+                <div style={{ ...styles.navIcon, color: '#16a34a' }}>💬</div>
+                <div style={{ ...styles.navLabel, color: '#16a34a' }}>Chat</div>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // ==================== EVENT DETAIL SCREEN ====================
+      if (screen === 'eventDetail' && selectedEvent) {
+        return (
+          <div style={styles.app}>
+            <div style={styles.header}>
+              <div style={styles.logo}>TeamKick</div>
+              <div style={styles.headerRight} onClick={logout}>👤</div>
+            </div>
+
+            <div style={styles.content}>
+              <button style={styles.backBtn} onClick={() => setScreen('home')}>← Back</button>
+
+              <div style={{ ...styles.eventHero, background: selectedEvent.type === 'game' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : selectedEvent.type === 'practice' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'linear-gradient(135deg, #a855f7 0%, #9333ea 100%)' }}>
+                <div style={styles.eventTypeRow}>
+                  <span style={{ ...styles.typeBadge, background: 'rgba(255,255,255,0.3)', color: 'white' }}>
+                    {selectedEvent.type.toUpperCase()}
+                  </span>
+                </div>
+                <h1 style={{ ...styles.eventHeroTitle, color: 'white', marginTop: 12 }}>{selectedEvent.title}</h1>
+              </div>
+
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>Event Details</h3>
+                <div style={styles.eventDetails}>
+                  <div style={styles.detailRow}>📅 {selectedEvent.date}</div>
+                  <div style={styles.detailRow}>🕐 {selectedEvent.time}</div>
+                  <div style={styles.detailRow}>📍 {selectedEvent.location}</div>
+                </div>
+              </div>
+
+              {currentUser.isCoach && (
+                <div style={styles.card}>
+                  <div style={styles.cardHeader}>
+                    <h3 style={styles.cardTitle}>Carpool</h3>
+                    <button style={styles.btnPrimary}>Organize</button>
+                  </div>
+                  <div style={styles.emptyText}>No carpool arranged yet</div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      return null;
+    }
+
+    // Render the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
 </html>
