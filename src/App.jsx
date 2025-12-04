@@ -22,8 +22,8 @@ const sampleTeam = {
 };
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState('login');
-  const [user, setUser] = useState(null);
+  const [currentScreen, setCurrentScreen] = useState('home');
+  const [user, setUser] = useState({ name: 'Mike Wilson', role: 'parent', player: 'Emma Wilson' });
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [carpoolData, setCarpoolData] = useState(null);
   const [chatMessages, setChatMessages] = useState([
@@ -32,13 +32,6 @@ function App() {
     { id: 3, sender: 'Lisa Chen', message: 'Can someone give Liam a ride Saturday?', time: '3:15 PM' },
   ]);
   const [newMessage, setNewMessage] = useState('');
-
-  // Login Handler
-  const handleLogin = (e) => {
-    e.preventDefault();
-    setUser({ name: 'Mike Wilson', role: 'parent', player: 'Emma Wilson' });
-    setCurrentScreen('home');
-  };
 
   // Calculate Carpool Suggestions
   const calculateCarpools = (event) => {
@@ -105,41 +98,6 @@ function App() {
     },
     content: {
       padding: '20px'
-    },
-    // Login Screen
-    loginContainer: {
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px'
-    },
-    loginCard: {
-      background: 'white',
-      borderRadius: '24px',
-      padding: '40px 32px',
-      width: '100%',
-      maxWidth: '380px',
-      boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
-    },
-    loginIcon: {
-      fontSize: '64px',
-      textAlign: 'center',
-      marginBottom: '24px'
-    },
-    loginTitle: {
-      fontSize: '28px',
-      fontWeight: '700',
-      color: '#16a34a',
-      textAlign: 'center',
-      marginBottom: '8px'
-    },
-    loginSubtitle: {
-      color: '#6b7280',
-      textAlign: 'center',
-      marginBottom: '32px',
-      fontSize: '15px'
     },
     input: {
       width: '100%',
@@ -513,27 +471,6 @@ function App() {
       padding: '0'
     }
   };
-
-  // LOGIN SCREEN
-  if (currentScreen === 'login') {
-    return (
-      <div style={styles.loginContainer}>
-        <div style={styles.loginCard}>
-          <div style={styles.loginIcon}>⚽</div>
-          <h1 style={styles.loginTitle}>TeamKick</h1>
-          <p style={styles.loginSubtitle}>Youth Soccer Coordination Made Easy</p>
-          <form onSubmit={handleLogin}>
-            <input type="email" placeholder="Email" style={styles.input} required />
-            <input type="password" placeholder="Password" style={styles.input} required />
-            <button type="submit" style={styles.btn}>Sign In</button>
-          </form>
-          <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '13px', color: '#6b7280' }}>
-            Demo: Any email/password works
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   // HOME SCREEN
   if (currentScreen === 'home') {
