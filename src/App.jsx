@@ -32,6 +32,19 @@ function App() {
     { id: 3, sender: 'Lisa Chen', message: 'Can someone give Liam a ride Saturday?', time: '3:15 PM' },
   ]);
   const [newMessage, setNewMessage] = useState('');
+  const [carpoolGroups, setCarpoolGroups] = useState([
+    {
+      id: 1,
+      name: 'Wilson Carpool',
+      driver: 'Mike Wilson',
+      members: ['Emma Wilson', 'Liam Chen'],
+      notes: 'Pick up from school, drop off at field'
+    }
+  ]);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [groupNotes, setGroupNotes] = useState('');
 
   // Calculate Carpool Suggestions
   const calculateCarpools = (event) => {
@@ -63,6 +76,38 @@ function App() {
       }]);
       setNewMessage('');
     }
+  };
+
+  // Toggle Member Selection
+  const toggleMember = (playerName) => {
+    if (selectedMembers.includes(playerName)) {
+      setSelectedMembers(selectedMembers.filter(m => m !== playerName));
+    } else {
+      setSelectedMembers([...selectedMembers, playerName]);
+    }
+  };
+
+  // Create Carpool Group
+  const createCarpoolGroup = () => {
+    if (newGroupName.trim() && selectedMembers.length > 0) {
+      const newGroup = {
+        id: carpoolGroups.length + 1,
+        name: newGroupName,
+        driver: user.name,
+        members: selectedMembers,
+        notes: groupNotes
+      };
+      setCarpoolGroups([...carpoolGroups, newGroup]);
+      setNewGroupName('');
+      setSelectedMembers([]);
+      setGroupNotes('');
+      setShowCreateGroup(false);
+    }
+  };
+
+  // Delete Carpool Group
+  const deleteCarpoolGroup = (groupId) => {
+    setCarpoolGroups(carpoolGroups.filter(g => g.id !== groupId));
   };
 
   // Styles
@@ -469,6 +514,17 @@ function App() {
       fontSize: '24px',
       cursor: 'pointer',
       padding: '0'
+    },
+    removeBtn: {
+      background: '#fef2f2',
+      color: '#dc2626',
+      border: 'none',
+      borderRadius: '8px',
+      width: '32px',
+      height: '32px',
+      cursor: 'pointer',
+      fontSize: '16px',
+      flexShrink: 0
     }
   };
 
@@ -541,6 +597,10 @@ function App() {
             <div style={{...styles.navIcon, color: '#6b7280'}}>📅</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Schedule</div>
           </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('carpoolManage')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🚗</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Carpool</div>
+          </button>
           <button style={styles.navBtn} onClick={() => setCurrentScreen('roster')}>
             <div style={{...styles.navIcon, color: '#6b7280'}}>👥</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Roster</div>
@@ -591,6 +651,10 @@ function App() {
             <div style={{...styles.navIcon, color: '#22c55e'}}>📅</div>
             <div style={{...styles.navLabel, color: '#22c55e'}}>Schedule</div>
           </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('carpoolManage')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🚗</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Carpool</div>
+          </button>
           <button style={styles.navBtn} onClick={() => setCurrentScreen('roster')}>
             <div style={{...styles.navIcon, color: '#6b7280'}}>👥</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Roster</div>
@@ -638,6 +702,10 @@ function App() {
           <button style={styles.navBtn} onClick={() => setCurrentScreen('schedule')}>
             <div style={{...styles.navIcon, color: '#6b7280'}}>📅</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Schedule</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('carpoolManage')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🚗</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Carpool</div>
           </button>
           <button style={styles.navBtn} onClick={() => setCurrentScreen('roster')}>
             <div style={{...styles.navIcon, color: '#22c55e'}}>👥</div>
@@ -793,6 +861,10 @@ function App() {
             <div style={{...styles.navIcon, color: '#6b7280'}}>📅</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Schedule</div>
           </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('carpoolManage')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🚗</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Carpool</div>
+          </button>
           <button style={styles.navBtn} onClick={() => setCurrentScreen('roster')}>
             <div style={{...styles.navIcon, color: '#6b7280'}}>👥</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Roster</div>
@@ -800,6 +872,203 @@ function App() {
           <button style={styles.navBtn} onClick={() => setCurrentScreen('chat')}>
             <div style={{...styles.navIcon, color: '#22c55e'}}>💬</div>
             <div style={{...styles.navLabel, color: '#22c55e'}}>Chat</div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // CARPOOL MANAGEMENT SCREEN
+  if (currentScreen === 'carpoolManage') {
+    return (
+      <div style={styles.app}>
+        <div style={styles.header}>
+          <div style={styles.logo}>🚗 My Carpools</div>
+        </div>
+
+        <div style={styles.content}>
+          <div style={styles.sectionTitle}>
+            <span>Your Carpool Groups</span>
+          </div>
+
+          {carpoolGroups.length === 0 ? (
+            <div style={{textAlign: 'center', padding: '40px 20px', color: '#6b7280'}}>
+              <div style={{fontSize: '48px', marginBottom: '16px'}}>🚗</div>
+              <div style={{fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}>No Carpool Groups Yet</div>
+              <div style={{fontSize: '14px'}}>Create a group to coordinate rides with families you're comfortable with</div>
+            </div>
+          ) : (
+            carpoolGroups.map(group => (
+              <div key={group.id} style={styles.card}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px'}}>
+                  <div>
+                    <div style={{fontSize: '18px', fontWeight: '700', color: '#1f2937', marginBottom: '4px'}}>
+                      {group.name}
+                    </div>
+                    <div style={{fontSize: '13px', color: '#6b7280'}}>
+                      Driver: {group.driver}
+                    </div>
+                  </div>
+                  <button
+                    style={{...styles.removeBtn}}
+                    onClick={() => deleteCarpoolGroup(group.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{marginBottom: '12px'}}>
+                  <div style={{fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', marginBottom: '8px'}}>
+                    Members ({group.members.length})
+                  </div>
+                  {group.members.map((member, idx) => (
+                    <div key={idx} style={{
+                      padding: '8px 12px',
+                      background: '#f9fafb',
+                      borderRadius: '8px',
+                      marginBottom: '6px',
+                      fontSize: '14px',
+                      color: '#4b5563',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <span>⚽</span>
+                      <span>{member}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {group.notes && (
+                  <div style={{
+                    background: '#fef3c7',
+                    borderLeft: '3px solid #f59e0b',
+                    padding: '10px 12px',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    color: '#92400e'
+                  }}>
+                    📝 {group.notes}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+
+          <button
+            style={{...styles.btn, width: '100%', padding: '16px', fontSize: '16px', marginTop: '20px'}}
+            onClick={() => setShowCreateGroup(true)}
+          >
+            + Create New Carpool Group
+          </button>
+
+          <div style={{...styles.card, background: '#dbeafe', border: '2px solid #3b82f6', marginTop: '20px', cursor: 'default'}}>
+            <div style={{fontSize: '16px', fontWeight: '600', color: '#1e40af', marginBottom: '8px'}}>
+              💡 How Carpool Groups Work
+            </div>
+            <div style={{fontSize: '13px', color: '#1e3a8a', lineHeight: '1.6'}}>
+              Create groups with families you're comfortable carpooling with. When you organize carpools for events, the app will prioritize matching you with your group members.
+            </div>
+          </div>
+        </div>
+
+        {/* Create Group Modal */}
+        {showCreateGroup && (
+          <div style={styles.modal} onClick={() => setShowCreateGroup(false)}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <h3 style={styles.modalTitle}>Create Carpool Group</h3>
+                <button style={styles.modalClose} onClick={() => setShowCreateGroup(false)}>✕</button>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Group Name (e.g., Wilson Carpool)"
+                style={styles.input}
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+              />
+
+              <div style={{marginBottom: '16px'}}>
+                <div style={{fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '12px'}}>
+                  Select Players to Include:
+                </div>
+                {sampleTeam.players.map(player => (
+                  <div
+                    key={player.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '12px',
+                      background: selectedMembers.includes(player.name) ? '#dcfce7' : '#f9fafb',
+                      borderRadius: '10px',
+                      marginBottom: '8px',
+                      cursor: 'pointer',
+                      border: selectedMembers.includes(player.name) ? '2px solid #22c55e' : '2px solid transparent'
+                    }}
+                    onClick={() => toggleMember(player.name)}
+                  >
+                    <div style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      border: '2px solid #22c55e',
+                      background: selectedMembers.includes(player.name) ? '#22c55e' : 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: '12px',
+                      color: 'white',
+                      fontWeight: '700',
+                      fontSize: '14px'
+                    }}>
+                      {selectedMembers.includes(player.name) && '✓'}
+                    </div>
+                    <div style={{flex: 1}}>
+                      <div style={{fontSize: '15px', fontWeight: '600', color: '#1f2937'}}>{player.name}</div>
+                      <div style={{fontSize: '13px', color: '#6b7280'}}>Parent: {player.parent}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <textarea
+                placeholder="Notes (optional - e.g., pickup/dropoff details)"
+                style={{...styles.input, minHeight: '80px', resize: 'vertical'}}
+                value={groupNotes}
+                onChange={(e) => setGroupNotes(e.target.value)}
+              />
+
+              <button
+                style={{...styles.btn, width: '100%', padding: '14px', fontSize: '15px'}}
+                onClick={createCarpoolGroup}
+              >
+                Create Group
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={styles.bottomNav}>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('home')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🏠</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Home</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('schedule')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>📅</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Schedule</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('carpoolManage')}>
+            <div style={{...styles.navIcon, color: '#22c55e'}}>🚗</div>
+            <div style={{...styles.navLabel, color: '#22c55e'}}>Carpool</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('roster')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>👥</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Roster</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('chat')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>💬</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Chat</div>
           </button>
         </div>
       </div>
