@@ -6,18 +6,24 @@ const sampleTeam = {
   name: 'Lightning FC U12',
   coach: 'Coach Sarah',
   players: [
-    { id: 1, name: 'Emma Wilson', number: 7, parent: 'Mike Wilson', phone: '555-0101', canDrive: true, seats: 4 },
-    { id: 2, name: 'Liam Chen', number: 10, parent: 'Lisa Chen', phone: '555-0102', canDrive: true, seats: 5 },
-    { id: 3, name: 'Olivia Martinez', number: 3, parent: 'Carlos Martinez', phone: '555-0103', canDrive: false, seats: 0 },
-    { id: 4, name: 'Noah Johnson', number: 5, parent: 'Amy Johnson', phone: '555-0104', canDrive: true, seats: 3 },
-    { id: 5, name: 'Ava Thompson', number: 11, parent: 'James Thompson', phone: '555-0105', canDrive: false, seats: 0 },
-    { id: 6, name: 'Mason Davis', number: 9, parent: 'Rachel Davis', phone: '555-0106', canDrive: true, seats: 4 },
+    { id: 1, name: 'Emma Wilson', number: 7, parent: 'Mike Wilson', phone: '555-0101', email: 'mike@email.com', canDrive: true, seats: 4, goals: 12, assists: 8, gamesPlayed: 15 },
+    { id: 2, name: 'Liam Chen', number: 10, parent: 'Lisa Chen', phone: '555-0102', email: 'lisa@email.com', canDrive: true, seats: 5, goals: 18, assists: 5, gamesPlayed: 15 },
+    { id: 3, name: 'Olivia Martinez', number: 3, parent: 'Carlos Martinez', phone: '555-0103', email: 'carlos@email.com', canDrive: false, seats: 0, goals: 3, assists: 12, gamesPlayed: 14 },
+    { id: 4, name: 'Noah Johnson', number: 5, parent: 'Amy Johnson', phone: '555-0104', email: 'amy@email.com', canDrive: true, seats: 3, goals: 7, assists: 6, gamesPlayed: 15 },
+    { id: 5, name: 'Ava Thompson', number: 11, parent: 'James Thompson', phone: '555-0105', email: 'james@email.com', canDrive: false, seats: 0, goals: 15, assists: 4, gamesPlayed: 13 },
+    { id: 6, name: 'Mason Davis', number: 9, parent: 'Rachel Davis', phone: '555-0106', email: 'rachel@email.com', canDrive: true, seats: 4, goals: 10, assists: 7, gamesPlayed: 15 },
   ],
   schedule: [
-    { id: 1, type: 'game', title: 'vs Thunder United', date: '2025-01-15', time: '10:00 AM', location: 'North Park Field 3' },
-    { id: 2, type: 'practice', title: 'Team Practice', date: '2025-01-17', time: '5:30 PM', location: 'Central Sports Complex' },
-    { id: 3, type: 'game', title: 'vs Storm FC', date: '2025-01-22', time: '11:30 AM', location: 'Riverside Stadium' },
-    { id: 4, type: 'practice', title: 'Scrimmage Day', date: '2025-01-24', time: '5:30 PM', location: 'Central Sports Complex' },
+    { id: 1, type: 'game', title: 'vs Thunder United', date: '2025-01-15', time: '10:00 AM', location: 'North Park Field 3', weather: { temp: 72, condition: 'Sunny', icon: '☀️' } },
+    { id: 2, type: 'practice', title: 'Team Practice', date: '2025-01-17', time: '5:30 PM', location: 'Central Sports Complex', weather: { temp: 68, condition: 'Partly Cloudy', icon: '⛅' } },
+    { id: 3, type: 'game', title: 'vs Storm FC', date: '2025-01-22', time: '11:30 AM', location: 'Riverside Stadium', weather: { temp: 65, condition: 'Cloudy', icon: '☁️' } },
+    { id: 4, type: 'practice', title: 'Scrimmage Day', date: '2025-01-24', time: '5:30 PM', location: 'Central Sports Complex', weather: { temp: 70, condition: 'Clear', icon: '🌤️' } },
+  ],
+  snackSchedule: [
+    { eventId: 1, player: 'Emma Wilson', parent: 'Mike Wilson' },
+    { eventId: 2, player: 'Liam Chen', parent: 'Lisa Chen' },
+    { eventId: 3, player: 'Olivia Martinez', parent: 'Carlos Martinez' },
+    { eventId: 4, player: 'Noah Johnson', parent: 'Amy Johnson' },
   ]
 };
 
@@ -45,6 +51,22 @@ function App() {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [groupNotes, setGroupNotes] = useState('');
+
+  // Advanced Features State
+  const [eventRSVPs, setEventRSVPs] = useState({
+    1: { going: ['Emma Wilson', 'Liam Chen', 'Olivia Martinez'], notGoing: [], maybe: ['Noah Johnson'] },
+    2: { going: ['Emma Wilson', 'Liam Chen', 'Mason Davis'], notGoing: ['Ava Thompson'], maybe: [] },
+  });
+  const [teamPolls, setTeamPolls] = useState([
+    {
+      id: 1,
+      question: 'What time works best for weekday practices?',
+      options: ['5:00 PM', '5:30 PM', '6:00 PM'],
+      votes: { '5:00 PM': 2, '5:30 PM': 8, '6:00 PM': 3 },
+      active: true
+    }
+  ]);
+  const [showStats, setShowStats] = useState(false);
 
   // Calculate Carpool Suggestions
   const calculateCarpools = (event) => {
@@ -108,6 +130,36 @@ function App() {
   // Delete Carpool Group
   const deleteCarpoolGroup = (groupId) => {
     setCarpoolGroups(carpoolGroups.filter(g => g.id !== groupId));
+  };
+
+  // RSVP Handler
+  const updateRSVP = (eventId, playerName, status) => {
+    setEventRSVPs(prev => {
+      const current = prev[eventId] || { going: [], notGoing: [], maybe: [] };
+      const updated = {
+        going: current.going.filter(p => p !== playerName),
+        notGoing: current.notGoing.filter(p => p !== playerName),
+        maybe: current.maybe.filter(p => p !== playerName)
+      };
+      updated[status].push(playerName);
+      return { ...prev, [eventId]: updated };
+    });
+  };
+
+  // Vote on Poll
+  const voteOnPoll = (pollId, option) => {
+    setTeamPolls(prev => prev.map(poll => {
+      if (poll.id === pollId) {
+        return {
+          ...poll,
+          votes: {
+            ...poll.votes,
+            [option]: (poll.votes[option] || 0) + 1
+          }
+        };
+      }
+      return poll;
+    }));
   };
 
   // Styles
@@ -624,22 +676,48 @@ function App() {
 
         <div style={styles.content}>
           <div style={styles.sectionTitle}>All Events</div>
-          {sampleTeam.schedule.map(event => (
-            <div key={event.id} style={styles.eventCard} onClick={() => { setSelectedEvent(event); calculateCarpools(event); }}>
-              <div style={styles.eventDate}>
-                <div style={styles.eventMonth}>{new Date(event.date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
-                <div style={styles.eventDay}>{new Date(event.date).getDate()}</div>
+          {sampleTeam.schedule.map(event => {
+            const rsvp = eventRSVPs[event.id] || { going: [], notGoing: [], maybe: [] };
+            const totalResponses = rsvp.going.length + rsvp.maybe.length + rsvp.notGoing.length;
+            const snack = sampleTeam.snackSchedule.find(s => s.eventId === event.id);
+
+            return (
+              <div key={event.id} style={{...styles.eventCard, flexDirection: 'column', gap: '12px'}} onClick={() => { setSelectedEvent(event); calculateCarpools(event); }}>
+                <div style={{display: 'flex', gap: '16px'}}>
+                  <div style={styles.eventDate}>
+                    <div style={styles.eventMonth}>{new Date(event.date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                    <div style={styles.eventDay}>{new Date(event.date).getDate()}</div>
+                  </div>
+                  <div style={styles.eventInfo}>
+                    <div style={styles.eventTitle}>{event.title}</div>
+                    <div style={styles.eventTime}>⏰ {event.time}</div>
+                    <div style={styles.eventTime}>📍 {event.location}</div>
+                    <span style={{...styles.badge, ...(event.type === 'game' ? styles.gameBadge : styles.practiceBadge)}}>
+                      {event.type}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Weather & RSVP Info */}
+                <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                  <div style={{background: '#fef3c7', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                    <span style={{fontSize: '16px'}}>{event.weather.icon}</span>
+                    <span>{event.weather.temp}°F</span>
+                  </div>
+                  <div style={{background: '#dcfce7', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                    <span>✓</span>
+                    <span>{rsvp.going.length} Going</span>
+                  </div>
+                  {snack && (
+                    <div style={{background: '#e0e7ff', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                      <span>🍿</span>
+                      <span>{snack.player}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div style={styles.eventInfo}>
-                <div style={styles.eventTitle}>{event.title}</div>
-                <div style={styles.eventTime}>⏰ {event.time}</div>
-                <div style={styles.eventTime}>📍 {event.location}</div>
-                <span style={{...styles.badge, ...(event.type === 'game' ? styles.gameBadge : styles.practiceBadge)}}>
-                  {event.type}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div style={styles.bottomNav}>
@@ -659,9 +737,9 @@ function App() {
             <div style={{...styles.navIcon, color: '#6b7280'}}>👥</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Roster</div>
           </button>
-          <button style={styles.navBtn} onClick={() => setCurrentScreen('chat')}>
-            <div style={{...styles.navIcon, color: '#6b7280'}}>💬</div>
-            <div style={{...styles.navLabel, color: '#6b7280'}}>Chat</div>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('more')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>⋯</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>More</div>
           </button>
         </div>
       </div>
@@ -1069,6 +1147,157 @@ function App() {
           <button style={styles.navBtn} onClick={() => setCurrentScreen('chat')}>
             <div style={{...styles.navIcon, color: '#6b7280'}}>💬</div>
             <div style={{...styles.navLabel, color: '#6b7280'}}>Chat</div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // MORE SCREEN
+  if (currentScreen === 'more') {
+    const sortedPlayers = [...sampleTeam.players].sort((a, b) => b.goals - a.goals);
+
+    return (
+      <div style={styles.app}>
+        <div style={styles.header}>
+          <div style={styles.logo}>⋯ More</div>
+        </div>
+
+        <div style={styles.content}>
+          {/* Quick Actions Grid */}
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '24px'}}>
+            <div style={{...styles.card, textAlign: 'center', cursor: 'pointer'}} onClick={() => setShowStats(!showStats)}>
+              <div style={{fontSize: '32px', marginBottom: '8px'}}>📊</div>
+              <div style={{fontSize: '14px', fontWeight: '600'}}>Player Stats</div>
+            </div>
+            <div style={{...styles.card, textAlign: 'center', cursor: 'pointer'}}>
+              <div style={{fontSize: '32px', marginBottom: '8px'}}>🚨</div>
+              <div style={{fontSize: '14px', fontWeight: '600'}}>Emergency</div>
+            </div>
+            <div style={{...styles.card, textAlign: 'center', cursor: 'pointer'}}>
+              <div style={{fontSize: '32px', marginBottom: '8px'}}>📋</div>
+              <div style={{fontSize: '14px', fontWeight: '600'}}>Team Polls</div>
+            </div>
+            <div style={{...styles.card, textAlign: 'center', cursor: 'pointer'}}>
+              <div style={{fontSize: '32px', marginBottom: '8px'}}>🍿</div>
+              <div style={{fontSize: '14px', fontWeight: '600'}}>Snack Duty</div>
+            </div>
+          </div>
+
+          {/* Player Stats */}
+          {showStats && (
+            <>
+              <div style={styles.sectionTitle}>⚽ Player Stats</div>
+              {sortedPlayers.map(player => (
+                <div key={player.id} style={styles.card}>
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px'}}>
+                    <div>
+                      <div style={{fontSize: '16px', fontWeight: '700', color: '#1f2937'}}>#{player.number} {player.name}</div>
+                      <div style={{fontSize: '13px', color: '#6b7280'}}>{player.gamesPlayed} Games Played</div>
+                    </div>
+                  </div>
+                  <div style={{display: 'flex', gap: '12px'}}>
+                    <div style={{flex: 1, background: '#dcfce7', padding: '10px', borderRadius: '8px', textAlign: 'center'}}>
+                      <div style={{fontSize: '24px', fontWeight: '700', color: '#166534'}}>{player.goals}</div>
+                      <div style={{fontSize: '11px', color: '#15803d', fontWeight: '600'}}>GOALS</div>
+                    </div>
+                    <div style={{flex: 1, background: '#dbeafe', padding: '10px', borderRadius: '8px', textAlign: 'center'}}>
+                      <div style={{fontSize: '24px', fontWeight: '700', color: '#1e40af'}}>{player.assists}</div>
+                      <div style={{fontSize: '11px', color: '#1e3a8a', fontWeight: '600'}}>ASSISTS</div>
+                    </div>
+                    <div style={{flex: 1, background: '#fef3c7', padding: '10px', borderRadius: '8px', textAlign: 'center'}}>
+                      <div style={{fontSize: '24px', fontWeight: '700', color: '#b45309'}}>{player.goals + player.assists}</div>
+                      <div style={{fontSize: '11px', color: '#92400e', fontWeight: '600'}}>POINTS</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Team Poll */}
+          <div style={styles.sectionTitle}>📋 Active Poll</div>
+          {teamPolls.filter(p => p.active).map(poll => {
+            const totalVotes = Object.values(poll.votes).reduce((a, b) => a + b, 0);
+            return (
+              <div key={poll.id} style={styles.card}>
+                <div style={{fontSize: '16px', fontWeight: '700', color: '#1f2937', marginBottom: '16px'}}>
+                  {poll.question}
+                </div>
+                {poll.options.map(option => {
+                  const votes = poll.votes[option] || 0;
+                  const percentage = totalVotes > 0 ? (votes / totalVotes) * 100 : 0;
+                  return (
+                    <div
+                      key={option}
+                      style={{marginBottom: '12px', cursor: 'pointer'}}
+                      onClick={() => voteOnPoll(poll.id, option)}
+                    >
+                      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
+                        <span style={{fontSize: '14px', fontWeight: '600'}}>{option}</span>
+                        <span style={{fontSize: '14px', color: '#6b7280'}}>{votes} votes</span>
+                      </div>
+                      <div style={{background: '#e5e7eb', height: '8px', borderRadius: '4px', overflow: 'hidden'}}>
+                        <div style={{
+                          background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                          height: '100%',
+                          width: `${percentage}%`,
+                          transition: 'width 0.3s'
+                        }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {/* Emergency Contacts */}
+          <div style={styles.sectionTitle}>🚨 Emergency Contacts</div>
+          {sampleTeam.players.map(player => (
+            <div key={player.id} style={{...styles.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <div>
+                <div style={{fontSize: '15px', fontWeight: '600', color: '#1f2937'}}>{player.parent}</div>
+                <div style={{fontSize: '13px', color: '#6b7280'}}>Parent of {player.name}</div>
+              </div>
+              <div style={{display: 'flex', gap: '8px'}}>
+                <a href={`tel:${player.phone}`} style={{
+                  background: '#22c55e',
+                  color: 'white',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '20px',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  📞
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={styles.bottomNav}>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('home')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🏠</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Home</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('schedule')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>📅</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Schedule</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('carpoolManage')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>🚗</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Carpool</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('roster')}>
+            <div style={{...styles.navIcon, color: '#6b7280'}}>👥</div>
+            <div style={{...styles.navLabel, color: '#6b7280'}}>Roster</div>
+          </button>
+          <button style={styles.navBtn} onClick={() => setCurrentScreen('more')}>
+            <div style={{...styles.navIcon, color: '#22c55e'}}>⋯</div>
+            <div style={{...styles.navLabel, color: '#22c55e'}}>More</div>
           </button>
         </div>
       </div>
